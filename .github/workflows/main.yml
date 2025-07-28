@@ -1,0 +1,119 @@
+# .github/workflows/main.yml
+#
+# 這是一個完整的 CI/CD 工作流程，它融合了程式碼品質檢查與自動化部署。
+#
+name: Build, Test, and Deploy mywebapp
+
+# 觸發條件：
+# 1. 當有新的程式碼被推送到 main 分支時 (例如合併 PR 後)
+# 2. 當有新的 Pull Request 被建立或更新時
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+# 方便管理的環境變數
+env:
+  REGISTRY_DOMAIN: registry.benedicttiong.site
+  IMAGE_NAME: mywebapp
+
+jobs:
+  # --- JOB 1: 程式碼品質檢查 (Linting & Testing) ---
+  # 這個工作的目的是「審查」，確保提交的程式碼符合品質標準。
+  # 它會在每一次 push 和每一個 PR 上執行。
+  lint-and-test:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 2. Set up Python environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 3. Install dependencies (linter)
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
+
+      - name: 4. Lint with flake8
+        # 這一步取代了 lxc-ci 的 ShellCheck。
+        # flake8 會檢查你的 app.py 是否有語法錯誤或不符合風格的地方。
+        run: |
+          # --count: 顯示錯誤總數
+          # --select=E9,F63,F7,F82: 排除一些常見的無害錯誤
+          # --show-source: 顯示有問題的程式碼行
+          # --statistics: 顯示每個錯誤的統計
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  # --- JOB 2: 建構並推送映像檔 ---
+  # 這個工作的目的是「生產」，只有在程式碼通過審查並合併到 main 分支後才執行。
+  build-and-push:
+    name: Build and Push Docker Image
+    needs: lint-and-test # 必須等待上一個 job 成功
+    runs-on: ubuntu-latest
+
+    # 關鍵條件：只在推送到 main 分支時執行此 job
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    outputs:
+      VERSION: ${{ steps.vars.outputs.VERSION }}
+      IMAGE_URL: ${{ steps.vars.outputs.IMAGE_URL }}
+
+    steps:
+      - name: 1. Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 2. Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 3. Generate Version and Image URL
+        id: vars
+        run: |
+          VERSION=$(date +%Y%m%d)-$(git rev-parse --short HEAD)
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          IMAGE_URL="${{ env.REGISTRY_DOMAIN }}/${{ env.IMAGE_NAME }}:$VERSION"
+          echo "IMAGE_URL=$IMAGE_URL" >> $GITHUB_OUTPUT
+
+      - name: 4. Update Version in app.py
+        run: |
+          sed -i "s/VERSION = .*/VERSION = \"${{ steps.vars.outputs.VERSION }}\"/" app.py
+
+      - name: 5. Build and Push to Private Registry
+        run: |
+          # 你的 Registry 目前沒有認證，所以不需要 login
+          docker buildx build --platform linux/arm64 -t ${{ steps.vars.outputs.IMAGE_URL }} --push .
+
+  # --- JOB 3: 部署到 prplOS ---
+  # 這個工作的目的是「交付」，只有在生產出新的成品後才執行。
+  deploy-to-prplos:
+    name: Deploy to prplOS
+    needs: build-and-push # 必須等待上一個 job 成功
+    runs-on: ubuntu-latest
+
+    # 同樣，只在推送到 main 分支時執行
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Deploy via Public IP
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PRPLOS_PUBLIC_HOST }}
+          username: ${{ secrets.PRPLOS_USER }}
+          key: ${{ secrets.PRPLOS_SSH_KEY }}
+          port: 22
+          script: |
+            # (建議) 在這裡加入卸載舊版本容器的邏輯
+            # 例如：lxc-ls -f --format csv | awk -F, 'NR>1 {print $1}' | xargs -I {} ubus-cli 'SoftwareModules.UninstallDU(UUID="{}")'
+            
+            RND=$(cat /proc/sys/kernel/random/uuid)
+            UUID_V5=$(echo "$RND" | sed -E 's/^(.{14}).(.*)$/\\15\\2/')
+            
+            # 從你自己的網域拉取映像檔並安裝
+            ubus-cli 'SoftwareModules.InstallDU(URL="docker://${{ needs.build-and-push.outputs.IMAGE_URL }}", UUID="'$UUID_V5'", ExecutionEnvRef="generic", NetworkConfig={ "AccessInterfaces" = [{"Reference" = "Lan"}] }, "Privileged"=true)'
+            
+            echo "Deployment of version ${{ needs.build-and-push.outputs.VERSION }} initiated."
