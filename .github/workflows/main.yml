@@ -103,21 +103,11 @@ jobs:
       - name: Deploy via Public IP
         uses: appleboy/ssh-action@master
         with:
-
+          host: 140.113.194.231
+          username: root
+          password: winlabisgood # 改用密碼登入
+          port: 670 # 改用你指定的埠號
           script: |
             RND="$(cat /proc/sys/kernel/random/uuid)"
             UUID_V5="$(echo "$RND" | sed -E 's/^(.{14}).(.*)$/\15\2/')"
             ubus-cli 'SoftwareModules.InstallDU(URL="docker://${{ needs.build-and-push.outputs.IMAGE_URL }}", UUID="'$UUID_V5'", ExecutionEnvRef="generic", NetworkConfig={ "AccessInterfaces" = [{"Reference" = "Lan"}] }, "Privileged"=true)'
-
-
-
-
-
-
-
-
-
-                      host: 140.113.194.231
-          username: root
-          password: winlabisgood # 改用密碼登入
-          port: 670 # 改用你指定的埠號
