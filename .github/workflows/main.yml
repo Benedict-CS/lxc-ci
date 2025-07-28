@@ -20,6 +20,8 @@ env:
 
 jobs:
   # --- JOB 1: 程式碼品質檢查 (Linting & Testing) ---
+  # 這個工作的目的是「審查」，確保提交的程式碼符合品質標準。
+  # 它會在每一次 push 和每一個 PR 上執行。
   lint-and-test:
     name: Code Quality Check
     runs-on: ubuntu-latest
@@ -39,15 +41,23 @@ jobs:
           pip install flake8
 
       - name: 4. Lint with flake8
+        # 這一步取代了 lxc-ci 的 ShellCheck。
+        # flake8 會檢查你的 app.py 是否有語法錯誤或不符合風格的地方。
         run: |
+          # --count: 顯示錯誤總數
+          # --select=E9,F63,F7,F82: 排除一些常見的無害錯誤
+          # --show-source: 顯示有問題的程式碼行
+          # --statistics: 顯示每個錯誤的統計
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
   # --- JOB 2: 建構並推送映像檔 ---
+  # 這個工作的目的是「生產」，只有在程式碼通過審查並合併到 main 分支後才執行。
   build-and-push:
     name: Build and Push Docker Image
     needs: lint-and-test # 必須等待上一個 job 成功
     runs-on: ubuntu-latest
 
+    # 關鍵條件：只在推送到 main 分支時執行此 job
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     outputs:
@@ -75,70 +85,39 @@ jobs:
 
       - name: 5. Build and Push to Private Registry
         run: |
+          # 你的 Registry 目前沒有認證，所以不需要 login
           docker buildx build --platform linux/arm64 -t ${{ steps.vars.outputs.IMAGE_URL }} --push .
 
-      # --- 新增的驗證步驟 ---
-      - name: 6. Verify Push to Registry
-        run: |
-          echo "Verifying that image ${{ steps.vars.outputs.IMAGE_URL }} exists in registry..."
-          # 稍作等待，確保 registry API 已更新
-          sleep 5
-          # 使用 curl 查詢 registry 的 catalog API，並用 grep 確認我們的映像檔名稱是否存在
-          # 如果 grep 找不到，指令會失敗，整個 job 也會失敗
-          curl -s https://${{ env.REGISTRY_DOMAIN }}/v2/_catalog | grep '"${{ env.IMAGE_NAME }}"'
-
-  # --- JOB 3: 部署到 prplOS (使用手動 SSH) ---
+  # --- JOB 3: 部署到 prplOS ---
+  # --- JOB 3: 部署到 prplOS ---
+  # 這個工作的目的是「交付」，只有在生產出新的成品後才執行。
   deploy-to-prplos:
     name: Deploy to prplOS
-    needs: build-and-push
+    needs: build-and-push # 必須等待上一個 job 成功
     runs-on: ubuntu-latest
 
+    # 同樣，只在推送到 main 分支時執行
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
-      - name: 1. Install SSH client
-        run: sudo apt-get update && sudo apt-get install -y sshpass
+      - name: Deploy via Public IP
+        uses: appleboy/ssh-action@master
+        with:
 
-      - name: 2. Deploy via Manual SSH
-        env:
-          host: 140.113.194.231
+          script: |
+            RND="$(cat /proc/sys/kernel/random/uuid)"
+            UUID_V5="$(echo "$RND" | sed -E 's/^(.{14}).(.*)$/\15\2/')"
+            ubus-cli 'SoftwareModules.InstallDU(URL="docker://${{ needs.build-and-push.outputs.IMAGE_URL }}", UUID="'$UUID_V5'", ExecutionEnvRef="generic", NetworkConfig={ "AccessInterfaces" = [{"Reference" = "Lan"}] }, "Privileged"=true)'
+
+
+
+
+
+
+
+
+
+                      host: 140.113.194.231
           username: root
           password: winlabisgood # 改用密碼登入
           port: 670 # 改用你指定的埠號
-          IMAGE_URL: ${{ needs.build-and-push.outputs.IMAGE_URL }}
-          VERSION: ${{ needs.build-and-push.outputs.VERSION }}
-          # *** 新增：Nginx 伺服器的內部 IP ***
-          NGINX_INTERNAL_IP: 192.168.1.242
-          REGISTRY_DOMAIN: ${{ env.REGISTRY_DOMAIN }}
-        run: |
-          # 準備要執行的遠端指令
-          REMOTE_SCRIPT="
-          echo '--- Modifying hosts file for NAT loopback workaround ---';
-          # 備份 hosts 檔案
-          cp /etc/hosts /etc/hosts.bak;
-          # 移除舊的記錄 (以防上次執行失敗)
-          sed -i '/${REGISTRY_DOMAIN}/d' /etc/hosts;
-          # 新增一筆記錄，將你的網域指向 Nginx 的內部 IP
-          echo '${NGINX_INTERNAL_IP} ${REGISTRY_DOMAIN}' >> /etc/hosts;
-          echo 'Current hosts file:';
-          cat /etc/hosts;
-
-          echo '--- Installing new container ---';
-          RND=\$(cat /proc/sys/kernel/random/uuid);
-          UUID_V5=\$(echo \"\$RND\" | sed -E 's/^(.{14}).(.*)\$/\\\\15\\\\2/');
-          ubus-cli 'SoftwareModules.InstallDU(URL=\"docker://${IMAGE_URL}\", UUID=\"'\$UUID_V5'\", ExecutionEnvRef=\"generic\", NetworkConfig={ \"AccessInterfaces\" = [{\"Reference\" = \"Lan\"}] }, \"Privileged\"=true)';
-          
-          echo '--- Restoring hosts file ---';
-          # 還原 hosts 檔案
-          mv /etc/hosts.bak /etc/hosts;
-
-          echo \"Deployment of version ${VERSION} initiated.\";
-          "
-
-          # 使用 sshpass 執行指令
-          echo "Connecting to ${SSH_USER}@${SSH_HOST} on port 670..."
-          sshpass -p "${SSH_PASS}" ssh -o StrictHostKeyChecking=no -p 670 "${SSH_USER}@${SSH_HOST}" "${REMOTE_SCRIPT}"
-
-
-
-
