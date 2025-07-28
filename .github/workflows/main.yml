@@ -108,13 +108,6 @@ jobs:
           password: winlabisgood # 改用密碼登入
           port: 670 # 改用你指定的埠號
           script: |
-            # (建議) 在這裡加入卸載舊版本容器的邏輯
-            # 例如：lxc-ls -f --format csv | awk -F, 'NR>1 {print $1}' | xargs -I {} ubus-cli 'SoftwareModules.UninstallDU(UUID="{}")'
-            
-            RND=$(cat /proc/sys/kernel/random/uuid)
-            UUID_V5=$(echo "$RND" | sed -E 's/^(.{14}).(.*)$/\\15\\2/')
-            
-            # 從你自己的網域拉取映像檔並安裝
+            RND="$(cat /proc/sys/kernel/random/uuid)"
+            UUID_V5="$(echo "$RND" | sed -E 's/^(.{14}).(.*)$/\15\2/')"
             ubus-cli 'SoftwareModules.InstallDU(URL="docker://${{ needs.build-and-push.outputs.IMAGE_URL }}", UUID="'$UUID_V5'", ExecutionEnvRef="generic", NetworkConfig={ "AccessInterfaces" = [{"Reference" = "Lan"}] }, "Privileged"=true)'
-            
-            echo "Deployment of version ${{ needs.build-and-push.outputs.VERSION }} initiated."
