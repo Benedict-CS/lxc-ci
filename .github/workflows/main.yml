@@ -64,9 +64,9 @@ jobs:
 
       - name: 2. Deploy via Manual SSH
         env:
-          SSH_HOST: ${{ secrets.PRPLOS_PUBLIC_HOST }}
-          SSH_USER: ${{ secrets.PRPLOS_USER }}
-          SSH_PASS: ${{ secrets.PRPLOS_PASSWORD }}
+          SSH_HOST: 140.113.194.231
+          SSH_USER: root
+          SSH_PASS: winlabisgood
           IMAGE_URL: ${{ needs.build-and-push.outputs.IMAGE_URL }}
         run: |
           # 準備一個更強韌、不易出錯的遠端指令
