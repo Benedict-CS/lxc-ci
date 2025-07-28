@@ -50,9 +50,9 @@ jobs:
       - name: Deploy via Public IP
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.PRPLOS_PUBLIC_HOST }}
-          username: ${{ secrets.PRPLOS_USER }}
-          password: ${{ secrets.PRPLOS_PASSWORD }}
+          host: 140.113.194.231
+          username: root
+          password: winlabisgood
           port: 670
           script: |
             RND="$(cat /proc/sys/kernel/random/uuid)"
