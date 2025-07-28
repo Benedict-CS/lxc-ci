@@ -58,29 +58,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. Install SSH client (Optimized)
-        # 移除 apt-get update 以加速流程
-        run: sudo apt-get install -y sshpass
-
-      - name: 2. Deploy via Manual SSH
-        env:
-          SSH_HOST: 140.113.194.231
-          SSH_USER: root
-          SSH_PASS: winlabisgood
-          IMAGE_URL: ${{ needs.build-and-push.outputs.IMAGE_URL }}
-        run: |
-          # 準備一個更強韌、不易出錯的遠端指令
-          REMOTE_SCRIPT="
-          echo '--- Generating Version 5 UUID ---';
-          RND=\$(cat /proc/sys/kernel/random/uuid);
-          # 使用 cut 指令取代 sed，避免複雜的轉義問題
-          PREFIX=\$(echo \"\$RND\" | cut -c 1-14);
-          SUFFIX=\$(echo \"\$RND\" | cut -c 16-);
-          UUID_V5=\"\${PREFIX}5\${SUFFIX}\";
-          echo \"Generated UUID: \$UUID_V5\";
-          
-          echo '--- Installing container ---';
-          ubus-cli \"SoftwareModules.InstallDU(URL=\\\"docker://${IMAGE_URL}\\\", UUID=\\\"\$UUID_V5\\\", ExecutionEnvRef=\\\"generic\\\", NetworkConfig={ \\\"AccessInterfaces\\\" = [{\\\"Reference\\\" = \\\"Lan\\\"}] }, \\\"Privileged\\\"=true)\";
-          "
-          # 執行遠端指令
-          sshpass -p "${SSH_PASS}" ssh -o StrictHostKeyChecking=no -p 670 "${SSH_USER}@${SSH_HOST}" "${REMOTE_SCRIPT}"
+      - name: Deploy via Public IP
+        uses: appleboy/ssh-action@master
+        with:
+          host: 140.113.194.231
+          username: root
+          password: winlabisgood
+          port: 670
+          script: |
+            RND="$(cat /proc/sys/kernel/random/uuid)"
+            UUID_V5="$(echo "$RND" | sed -E 's/^(.{14}).(.*)$/\15\2/')"
+            
+            ubus-cli 'SoftwareModules.InstallDU(URL="docker://${{ needs.build-and-push.outputs.IMAGE_URL }}", UUID="'$UUID_V5'", ExecutionEnvRef="generic", NetworkConfig={ "AccessInterfaces" = [{"Reference" = "Lan"}] }, "Privileged"=true)'
