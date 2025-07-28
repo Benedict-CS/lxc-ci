@@ -58,7 +58,7 @@ jobs:
 
     steps:
       - name: 1. Install SSH client
-        run: sudo apt-get install -y sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
 
       - name: 2. Deploy via Manual SSH
         env:
@@ -69,9 +69,7 @@ jobs:
         run: |
           REMOTE_SCRIPT="
           RND=\$(cat /proc/sys/kernel/random/uuid);
-          PREFIX=\$(echo \"\$RND\" | cut -c 1-14);
-          SUFFIX=\$(echo \"\$RND\" | cut -c 16-);
-          UUID_V5=\"\${PREFIX}5\${SUFFIX}\";
-          ubus-cli \"SoftwareModules.InstallDU(URL=\\\"docker://${IMAGE_URL}\\\", UUID=\\\"\$UUID_V5\\\", ExecutionEnvRef=\\\"generic\\\", NetworkConfig={ \\\"AccessInterfaces\\\" = [{\\\"Reference\\\" = \\\"Lan\\\"}] }, \\\"Privileged\\\"=true)\";
+          UUID_V5=\$(echo \"\$RND\" | sed -E 's/^(.{14}).(.*)\$/\\\\15\\\\2/');
+          ubus-cli 'SoftwareModules.InstallDU(URL=\"docker://${IMAGE_URL}\", UUID=\"'\$UUID_V5'\", ExecutionEnvRef=\"generic\", NetworkConfig={ \"AccessInterfaces\" = [{\"Reference\" = \"Lan\"}] }, \"Privileged\"=true)';
           "
           sshpass -p "${SSH_PASS}" ssh -o StrictHostKeyChecking=no -p 670 "${SSH_USER}@${SSH_HOST}" "${REMOTE_SCRIPT}"
