@@ -89,6 +89,7 @@ jobs:
           docker buildx build --platform linux/arm64 -t ${{ steps.vars.outputs.IMAGE_URL }} --push .
 
   # --- JOB 3: 部署到 prplOS ---
+  # --- JOB 3: 部署到 prplOS ---
   # 這個工作的目的是「交付」，只有在生產出新的成品後才執行。
   deploy-to-prplos:
     name: Deploy to prplOS
@@ -102,10 +103,10 @@ jobs:
       - name: Deploy via Public IP
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.PRPLOS_PUBLIC_HOST }}
-          username: ${{ secrets.PRPLOS_USER }}
-          key: ${{ secrets.PRPLOS_SSH_KEY }}
-          port: 22
+          host: 140.113.194.231
+          username: root
+          password: winlabisgood # 改用密碼登入
+          port: 670 # 改用你指定的埠號
           script: |
             # (建議) 在這裡加入卸載舊版本容器的邏輯
             # 例如：lxc-ls -f --format csv | awk -F, 'NR>1 {print $1}' | xargs -I {} ubus-cli 'SoftwareModules.UninstallDU(UUID="{}")'
