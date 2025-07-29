@@ -62,10 +62,10 @@ jobs:
 
       - name: Set up SSH credentials
         run: |
-          mkdir -p "$HOME/.ssh"
-          echo "${{ secrets.PRPLOS_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/id_rsa"
-          chmod 600 "$HOME/.ssh/id_rsa"
-          ssh-keyscan -p 670 -H ${{ secrets.PRPLOS_PUBLIC_HOST }} >> "$HOME/.ssh/known_hosts"
+          mkdir -p /home/runner/.ssh
+          echo "${{ secrets.PRPLOS_SSH_PRIVATE_KEY }}" > /home/runner/.ssh/id_rsa
+          chmod 600 /home/runner/.ssh/id_rsa
+          ssh-keyscan -p 670 -H ${{ secrets.PRPLOS_PUBLIC_HOST }} >> /home/runner/.ssh/known_hosts
 
 
       - name: Deploy via SSH and ubus-cli
