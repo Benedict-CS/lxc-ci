@@ -35,7 +35,7 @@ jobs:
           LOCAL_TAG="${{ env.IMAGE_NAME }}:$VERSION"
           echo "LOCAL_TAG=$LOCAL_TAG" >> $GITHUB_OUTPUT
 
-      - name: Step 1 - Build Image and Load to local Docker
+      - name: Build Docker Image (arm64) and Load to Local Docker
         run: |
           docker buildx build \
             --platform linux/arm64 \
@@ -43,11 +43,11 @@ jobs:
             --provenance=false \
             --load .
 
-      - name: Step 2 - Tag Image for Registry
+      - name: Tag Image for Registry
         run: |
           docker tag ${{ steps.vars.outputs.LOCAL_TAG }} ${{ steps.vars.outputs.IMAGE_URL }}
 
-      - name: Step 3 - Push Image to Registry
+      - name: Push Image to Registry
         run: |
           docker push ${{ steps.vars.outputs.IMAGE_URL }}
 
@@ -57,33 +57,42 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. Install SSH client (Optimized)
+      - name: Install sshpass
         run: sudo apt-get install -y sshpass
 
-      - name: 2. Deploy via Phoenix Strategy (Uninstall + Install)
+      - name: Set up SSH credentials
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PRPLOS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p 670 -H ${{ secrets.PRPLOS_PUBLIC_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy via SSH and ubus-cli
         env:
           SSH_HOST: ${{ secrets.PRPLOS_PUBLIC_HOST }}
           SSH_USER: ${{ secrets.PRPLOS_USER }}
           SSH_PASS: ${{ secrets.PRPLOS_PASSWORD }}
           IMAGE_URL: ${{ needs.build-and-push.outputs.IMAGE_URL }}
         run: |
-          REMOTE_SCRIPT="
-          echo '--- Step 1: Uninstalling all existing containers ---';
-          ubus-cli 'SoftwareModules.DeploymentUnit.*.Uninstall()' || true;
-          
-          echo '--- Step 2: Installing new container ---';
-          RND=\$(cat /proc/sys/kernel/random/uuid);
-          PREFIX=\$(echo \"\$RND\" | cut -c 1-14);
-          SUFFIX=\$(echo \"\$RND\" | cut -c 16-);
-          UUID_V5=\"\${PREFIX}5\${SUFFIX}\";
-          echo \"Generated UUID: \$UUID_V5\";
-          
-          ubus-cli \"SoftwareModules.InstallDU(URL=\\\"docker://${IMAGE_URL}\\\", UUID=\\\"\$UUID_V5\\\", ExecutionEnvRef=\\\"generic\\\", NetworkConfig={ \\\"AccessInterfaces\\\" = [{\\\"Reference\\\" = \\\"Lan\\\"}] }, \\\"Privileged\\\"=true)\";
-          
-          echo '--- Step 3: Verifying deployment ---';
-          sleep 5; 
-          lxc-ls -f;
-          "
-          time ssh -vvv -o GSSAPIAuthentication=no -p 670 ${SSH_USER}@${SSH_HOST} exit
+          echo "Checking SSH connection..."
+          ssh -vvv -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -p 670 "${SSH_USER}@${SSH_HOST}" exit
 
-          sshpass -p "${SSH_PASS}" ssh -o StrictHostKeyChecking=no -o StrictHostKeyChecking=no -o GSSAPIAuthentication=no -o PreferredAuthentications=password  -o PubkeyAuthentication=no -p 670 "${SSH_USER}@${SSH_HOST}" "${REMOTE_SCRIPT}"
+          echo "Running deployment script on prplOS..."
+          sshpass -p "${SSH_PASS}" ssh -o StrictHostKeyChecking=no -o PubkeyAuthentication=no -p 670 "${SSH_USER}@${SSH_HOST}" bash -s <<EOF
+          set -e
+          echo "--- Step 1: Uninstall existing containers ---"
+          ubus-cli 'SoftwareModules.DeploymentUnit.*.Uninstall()' || true
+
+          echo "--- Step 2: Install new container ---"
+          RND=\$(cat /proc/sys/kernel/random/uuid)
+          PREFIX=\$(echo "\$RND" | cut -c 1-14)
+          SUFFIX=\$(echo "\$RND" | cut -c 16-)
+          UUID_V5="\${PREFIX}5\${SUFFIX}"
+          echo "Generated UUID: \$UUID_V5"
+
+          ubus-cli "SoftwareModules.InstallDU(URL=\\\"docker://${IMAGE_URL}\\\", UUID=\\\"\$UUID_V5\\\", ExecutionEnvRef=\\\"generic\\\", NetworkConfig={ \\\"AccessInterfaces\\\" = [{\\\"Reference\\\" = \\\"Lan\\\"}] }, \\\"Privileged\\\"=true)"
+
+          echo "--- Step 3: Verify container ---"
+          sleep 5
+          lxc-ls -f || true
+EOF
