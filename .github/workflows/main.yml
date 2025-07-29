@@ -82,18 +82,17 @@ jobs:
           UUID_V5=\"\${PREFIX}5\${SUFFIX}\";
           ubus-cli \"SoftwareModules.InstallDU(URL=\\\"docker://${IMAGE_URL}\\\", UUID=\\\"\$UUID_V5\\\", ExecutionEnvRef=\\\"generic\\\", NetworkConfig={ \\\"AccessInterfaces\\\" = [{\\\"Reference\\\" = \\\"Lan\\\"}] }, \\\"Privileged\\\"=true)\";
           
-          echo '--- Step 3: Setting a permanent hostname (Service Discovery) ---';
-          sleep 5; # 等待容器完全啟動並生成設定檔
-          # 使用 lxc-attach 進入容器內部，直接修改 hostname 檔案
-          lxc-attach \"\$UUID_V5\" -- sh -c 'echo \"${SERVICE_HOSTNAME}\" > /etc/hostname';
+          echo '--- Step 3: Setting a permanent hostname using modern tools ---';
+          sleep 5; # 等待容器完全啟動
+          # 使用 lxc-attach 進入容器內部，執行 hostnamectl 指令
+          lxc-attach \"\$UUID_V5\" -- hostnamectl set-hostname \"${SERVICE_HOSTNAME}\";
 
-          echo '--- Step 4: Restarting container to apply hostname ---';
-          lxc-stop -n \"\$UUID_V5\";
-          sleep 2;
-          lxc-start -n \"\$UUID_V5\";
+          echo '--- Step 4: Restarting container network to register hostname ---';
+          # 重啟容器的網路服務，讓它用新的名字去 DHCP 註冊
+          lxc-attach \"\$UUID_V5\" -- systemctl restart networking;
 
           echo '--- Step 5: Verifying deployment ---';
-          sleep 5; # 等待容器重啟
+          sleep 5; # 等待網路重啟
           lxc-ls -f;
           echo 'You can now access your service at: http://${SERVICE_HOSTNAME}:8000';
           "
