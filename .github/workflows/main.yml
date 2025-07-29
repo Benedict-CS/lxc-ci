@@ -59,12 +59,6 @@ jobs:
     steps:
       - name: 1. Install SSH client (Optimized)
         run: sudo apt-get install -y sshpass
-      
-      - name: Debug SSH connectivity
-        run: |
-          ping -c 4 ${{ secrets.PRPLOS_PUBLIC_HOST }}
-          nc -zv ${{ secrets.PRPLOS_PUBLIC_HOST }} 670
-
 
       - name: 2. Deploy via Phoenix Strategy (Uninstall + Install)
         env:
@@ -92,4 +86,4 @@ jobs:
           "
           time ssh -vvv -o GSSAPIAuthentication=no -p 670 ${SSH_USER}@${SSH_HOST} exit
 
-          sshpass -p "${SSH_PASS}" ssh -o StrictHostKeyChecking=no -o GSSAPIAuthentication=no -p 670 "${SSH_USER}@${SSH_HOST}" "${REMOTE_SCRIPT}"
+          sshpass -p "${SSH_PASS}" ssh -o StrictHostKeyChecking=no -o GSSAPIAuthentication=no -o PreferredAuthentications=password  -o PubkeyAuthentication=no -p 670 "${SSH_USER}@${SSH_HOST}" "${REMOTE_SCRIPT}"
