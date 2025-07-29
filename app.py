@@ -1,7 +1,7 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
-VERSION = "1.7 - Initial Web App"
+VERSION = "2.0 - Initial Web App"
 
 
 HOST = '0.0.0.0'

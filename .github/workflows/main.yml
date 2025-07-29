@@ -8,8 +8,6 @@ on:
 env:
   REGISTRY_DOMAIN: registry.benedicttiong.site
   IMAGE_NAME: mywebapp
-  # --- 為你的服務取一個獨一無二的名字 ---
-  SERVICE_HOSTNAME: my-awesome-app
 
 jobs:
   build-and-push:
@@ -62,17 +60,17 @@ jobs:
       - name: 1. Install SSH client (Optimized)
         run: sudo apt-get install -y sshpass
 
-      - name: 2. Deploy with Service Discovery
+      - name: 2. Deploy via Phoenix Strategy (Uninstall + Install)
         env:
           SSH_HOST: 140.113.194.231
           SSH_USER: root
           SSH_PASS: winlabisgood
           IMAGE_URL: ${{ needs.build-and-push.outputs.IMAGE_URL }}
-          SERVICE_HOSTNAME: ${{ env.SERVICE_HOSTNAME }}
         run: |
-          # 準備一個具備「報戶口」功能的智慧腳本
+          # 準備一個更穩健的「鳳凰重生」腳本
           REMOTE_SCRIPT="
           echo '--- Step 1: Uninstalling all existing containers ---';
+          # 使用 ubus-cli 和 xargs，自動化地卸載所有找到的容器
           ubus-cli 'SoftwareModules.DeploymentUnit.*.?' | awk -F. '/\\.UUID=/ {gsub(/\"/, \"\", \$5); print \$5}' | xargs -r -n 1 ubus-cli 'SoftwareModules.UninstallDU(UUID=\"\$0\")' || true;
           
           echo '--- Step 2: Installing new container ---';
@@ -80,21 +78,13 @@ jobs:
           PREFIX=\$(echo \"\$RND\" | cut -c 1-14);
           SUFFIX=\$(echo \"\$RND\" | cut -c 16-);
           UUID_V5=\"\${PREFIX}5\${SUFFIX}\";
+          echo \"Generated UUID: \$UUID_V5\";
+          
           ubus-cli \"SoftwareModules.InstallDU(URL=\\\"docker://${IMAGE_URL}\\\", UUID=\\\"\$UUID_V5\\\", ExecutionEnvRef=\\\"generic\\\", NetworkConfig={ \\\"AccessInterfaces\\\" = [{\\\"Reference\\\" = \\\"Lan\\\"}] }, \\\"Privileged\\\"=true)\";
           
-          echo '--- Step 3: Setting a permanent hostname using modern tools ---';
-          sleep 5; # 等待容器完全啟動
-          # 使用 lxc-attach 進入容器內部，執行 hostnamectl 指令
-          lxc-attach \"\$UUID_V5\" -- hostnamectl set-hostname \"${SERVICE_HOSTNAME}\";
-
-          echo '--- Step 4: Restarting container network to register hostname ---';
-          # 重啟容器的網路服務，讓它用新的名字去 DHCP 註冊
-          lxc-attach \"\$UUID_V5\" -- systemctl restart networking;
-
-          echo '--- Step 5: Verifying deployment ---';
-          sleep 5; # 等待網路重啟
+          echo '--- Step 3: Verifying deployment ---';
+          sleep 5; # 等待容器啟動
           lxc-ls -f;
-          echo 'You can now access your service at: http://${SERVICE_HOSTNAME}:8000';
           "
           # 執行遠端指令
           sshpass -p "${SSH_PASS}" ssh -o StrictHostKeyChecking=no -p 670 "${SSH_USER}@${SSH_HOST}" "${REMOTE_SCRIPT}"
