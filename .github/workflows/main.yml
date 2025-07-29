@@ -71,8 +71,8 @@ jobs:
           # 準備一個能夠處理 Update 或 Install 的智慧腳本
           REMOTE_SCRIPT="
           echo '--- Step 1: Finding existing container for \"${APP_NAME}\" ---';
-          # 查詢 SoftwareModules.DeploymentUnit，找到 Name 為 mywebapp 的那一個，並取出它的 UUID
-          EXISTING_UUID=\$(ubus-cli list SoftwareModules.DeploymentUnit | grep '\"Name\":\"${APP_NAME}\"' -B 1 | grep 'DeploymentUnit' | awk -F. '{print \$3}');
+          # 使用一個更強韌的 awk 指令來精準解析 ubus 輸出
+          EXISTING_UUID=\$(ubus-cli 'SoftwareModules.DeploymentUnit.*.?' | awk -F'[.\\\"]' '/\\.Name=\"${APP_NAME}\"/ {unit=\$3} /\\.UUID/ && unit { if (\$3 == unit) { print \$5; exit } }');
 
           if [ -n \"\$EXISTING_UUID\" ]; then
             echo \"Found existing container with UUID: \$EXISTING_UUID. Proceeding with Update...\";
