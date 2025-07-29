@@ -60,36 +60,31 @@ jobs:
       - name: 1. Install SSH client (Optimized)
         run: sudo apt-get install -y sshpass
 
-      - name: 2. Deploy via Stateful Update
+      - name: 2. Deploy via Phoenix Strategy (Uninstall + Install)
         env:
           SSH_HOST: 140.113.194.231
           SSH_USER: root
           SSH_PASS: winlabisgood
           IMAGE_URL: ${{ needs.build-and-push.outputs.IMAGE_URL }}
-          APP_NAME: ${{ env.IMAGE_NAME }}
         run: |
-          # 準備一個能夠處理 Update 或 Install 的智慧腳本
+          # 準備一個更穩健的「鳳凰重生」腳本
           REMOTE_SCRIPT="
-          echo '--- Step 1: Finding existing container for \"${APP_NAME}\" ---';
-          # 使用一個更強韌的 awk 指令來精準解析 ubus 輸出
-          EXISTING_UUID=\$(ubus-cli 'SoftwareModules.DeploymentUnit.*.?' | awk -F'[.\\\"]' '/\\.Name=\"${APP_NAME}\"/ {unit=\$3} /\\.UUID/ && unit { if (\$3 == unit) { print \$5; exit } }');
-
-          if [ -n \"\$EXISTING_UUID\" ]; then
-            echo \"Found existing container with UUID: \$EXISTING_UUID. Proceeding with Update...\";
-            # 如果找到了，就執行 Update
-            ubus-cli \"SoftwareModules.Update(UUID=\\\"\$EXISTING_UUID\\\", URL=\\\"docker://${IMAGE_URL}\\\")\";
-          else
-            echo 'No existing container found. Proceeding with Install...';
-            # 如果沒找到，就執行 Install
-            RND=\$(cat /proc/sys/kernel/random/uuid);
-            PREFIX=\$(echo \"\$RND\" | cut -c 1-14);
-            SUFFIX=\$(echo \"\$RND\" | cut -c 16-);
-            UUID_V5=\"\${PREFIX}5\${SUFFIX}\";
-            ubus-cli \"SoftwareModules.InstallDU(URL=\\\"docker://${IMAGE_URL}\\\", UUID=\\\"\$UUID_V5\\\", ExecutionEnvRef=\\\"generic\\\", NetworkConfig={ \\\"AccessInterfaces\\\" = [{\\\"Reference\\\" = \\\"Lan\\\"}] }, \\\"Privileged\\\"=true)\";
-          fi;
-
-          echo '--- Step 2: Verifying deployment ---';
-          sleep 5;
+          echo '--- Step 1: Uninstalling all existing containers ---';
+          # 使用 ubus-cli 和 xargs，自動化地卸載所有找到的容器
+          # || true 確保在沒有容器可卸載時，腳本不會失敗
+          ubus-cli 'SoftwareModules.DeploymentUnit.*.?' | awk -F. '/\\.UUID=/ {gsub(/\"/, \"\", \$5); print \$5}' | xargs -r -n 1 ubus-cli 'SoftwareModules.UninstallDU(UUID=\"\$0\")' || true;
+          
+          echo '--- Step 2: Installing new container ---';
+          RND=\$(cat /proc/sys/kernel/random/uuid);
+          PREFIX=\$(echo \"\$RND\" | cut -c 1-14);
+          SUFFIX=\$(echo \"\$RND\" | cut -c 16-);
+          UUID_V5=\"\${PREFIX}5\${SUFFIX}\";
+          echo \"Generated UUID: \$UUID_V5\";
+          
+          ubus-cli \"SoftwareModules.InstallDU(URL=\\\"docker://${IMAGE_URL}\\\", UUID=\\\"\$UUID_V5\\\", ExecutionEnvRef=\\\"generic\\\", NetworkConfig={ \\\"AccessInterfaces\\\" = [{\\\"Reference\\\" = \\\"Lan\\\"}] }, \\\"Privileged\\\"=true)\";
+          
+          echo '--- Step 3: Verifying deployment ---';
+          sleep 5; # 等待容器啟動
           lxc-ls -f;
           "
           # 執行遠端指令
