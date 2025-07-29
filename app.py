@@ -1,9 +1,6 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-
-VERSION = "2.5 - Initial Web App"
-
-
+VERSION = "1.0 - Initial Web App"
 HOST = '0.0.0.0'
 PORT = 8000
 
