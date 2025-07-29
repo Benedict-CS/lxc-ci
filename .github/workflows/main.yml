@@ -57,42 +57,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install expect
-        run: sudo apt-get update && sudo apt-get install -y expect
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PRPLOS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p ${{ secrets.PRPLOS_SSH_PORT }} ${{ secrets.PRPLOS_PUBLIC_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy via SSH using expect
+      - name: Run remote script over SSH
         env:
           SSH_HOST: ${{ secrets.PRPLOS_PUBLIC_HOST }}
           SSH_USER: ${{ secrets.PRPLOS_USER }}
-          SSH_PASS: ${{ secrets.PRPLOS_PASSWORD }}
+          SSH_PORT: ${{ secrets.PRPLOS_SSH_PORT }}
           IMAGE_URL: ${{ needs.build-and-push.outputs.IMAGE_URL }}
         run: |
-          REMOTE_SCRIPT="
-          echo '--- Step 1: Uninstalling all existing containers ---';
-          ubus-cli 'SoftwareModules.DeploymentUnit.*.Uninstall()' || true;
+          ssh -i ~/.ssh/id_rsa -p $SSH_PORT $SSH_USER@$SSH_HOST << EOF
+            echo '--- Step 1: Uninstall existing containers ---';
+            ubus-cli 'SoftwareModules.DeploymentUnit.*.Uninstall()' || true;
 
-          echo '--- Step 2: Installing new container ---';
-          RND=\$(cat /proc/sys/kernel/random/uuid);
-          PREFIX=\$(echo \"\$RND\" | cut -c 1-14);
-          SUFFIX=\$(echo \"\$RND\" | cut -c 16-);
-          UUID_V5=\"\${PREFIX}5\${SUFFIX}\";
-          echo \"Generated UUID: \$UUID_V5\";
+            echo '--- Step 2: Installing new container ---';
+            RND=\$(cat /proc/sys/kernel/random/uuid);
+            PREFIX=\$(echo "\$RND" | cut -c 1-14);
+            SUFFIX=\$(echo "\$RND" | cut -c 16-);
+            UUID_V5="\${PREFIX}5\${SUFFIX}";
+            echo "Generated UUID: \$UUID_V5";
 
-          ubus-cli \"SoftwareModules.InstallDU(URL=\\\"docker://${IMAGE_URL}\\\", UUID=\\\"\$UUID_V5\\\", ExecutionEnvRef=\\\"generic\\\", NetworkConfig={ \\\"AccessInterfaces\\\" = [{\\\"Reference\\\" = \\\"Lan\\\"}] }, \\\"Privileged\\\"=true)\";
+            ubus-cli "SoftwareModules.InstallDU(URL=\\\"docker://${IMAGE_URL}\\\", UUID=\\\"\$UUID_V5\\\", ExecutionEnvRef=\\\"generic\\\", NetworkConfig={ \\\"AccessInterfaces\\\" = [{\\\"Reference\\\" = \\\"Lan\\\"}] }, \\\"Privileged\\\"=true)";
 
-          echo '--- Step 3: Verifying deployment ---';
-          sleep 5;
-          lxc-ls -f;
-          "
-
-          echo "$REMOTE_SCRIPT" > remote_script.sh
-
-          expect << EOF
-            spawn ssh -o StrictHostKeyChecking=no -p 670 ${SSH_USER}@${SSH_HOST}
-            expect "password:"
-            send "${SSH_PASS}\r"
-            expect "#"
-            send "sh remote_script.sh\r"
-            expect "#"
-            send "exit\r"
+            echo '--- Step 3: Verifying deployment ---';
+            sleep 5; 
+            lxc-ls -f;
           EOF
