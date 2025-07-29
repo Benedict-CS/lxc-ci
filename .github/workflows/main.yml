@@ -95,4 +95,4 @@ jobs:
           echo "--- Step 3: Verify container ---"
           sleep 5
           lxc-ls -f || true
-EOF
+          EOF
