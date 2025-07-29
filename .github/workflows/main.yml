@@ -57,25 +57,40 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. Install SSH client
-        run: sudo apt-get update && sudo apt-get install -y sshpass
+      - name: 1. Install SSH client (Optimized)
+        run: sudo apt-get install -y sshpass
 
-      - name: 2. Deploy via Manual SSH
+      - name: 2. Deploy via Stateful Update
         env:
           SSH_HOST: 140.113.194.231
           SSH_USER: root
           SSH_PASS: winlabisgood
           IMAGE_URL: ${{ needs.build-and-push.outputs.IMAGE_URL }}
+          APP_NAME: ${{ env.IMAGE_NAME }}
         run: |
+          # 準備一個能夠處理 Update 或 Install 的智慧腳本
           REMOTE_SCRIPT="
-          echo '--- Generating Version 5 UUID ---';
-          RND=\$(cat /proc/sys/kernel/random/uuid);
-          PREFIX=\$(echo \"\$RND\" | cut -c 1-14);
-          SUFFIX=\$(echo \"\$RND\" | cut -c 16-);
-          UUID_V5=\"\${PREFIX}5\${SUFFIX}\";
-          echo \"Generated UUID: \$UUID_V5\";
-          
-          echo '--- Installing new container ---';
-          ubus-cli \"SoftwareModules.InstallDU(URL=\\\"docker://${IMAGE_URL}\\\", UUID=\\\"\$UUID_V5\\\", ExecutionEnvRef=\\\"generic\\\", NetworkConfig={ \\\"AccessInterfaces\\\" = [{\\\"Reference\\\" = \\\"Lan\\\"}] }, \\\"Privileged\\\"=true)\";
+          echo '--- Step 1: Finding existing container for \"${APP_NAME}\" ---';
+          # 查詢 SoftwareModules.DeploymentUnit，找到 Name 為 mywebapp 的那一個，並取出它的 UUID
+          EXISTING_UUID=\$(ubus-cli list SoftwareModules.DeploymentUnit | grep '\"Name\":\"${APP_NAME}\"' -B 1 | grep 'DeploymentUnit' | awk -F. '{print \$3}');
+
+          if [ -n \"\$EXISTING_UUID\" ]; then
+            echo \"Found existing container with UUID: \$EXISTING_UUID. Proceeding with Update...\";
+            # 如果找到了，就執行 Update
+            ubus-cli \"SoftwareModules.Update(UUID=\\\"\$EXISTING_UUID\\\", URL=\\\"docker://${IMAGE_URL}\\\")\";
+          else
+            echo 'No existing container found. Proceeding with Install...';
+            # 如果沒找到，就執行 Install
+            RND=\$(cat /proc/sys/kernel/random/uuid);
+            PREFIX=\$(echo \"\$RND\" | cut -c 1-14);
+            SUFFIX=\$(echo \"\$RND\" | cut -c 16-);
+            UUID_V5=\"\${PREFIX}5\${SUFFIX}\";
+            ubus-cli \"SoftwareModules.InstallDU(URL=\\\"docker://${IMAGE_URL}\\\", UUID=\\\"\$UUID_V5\\\", ExecutionEnvRef=\\\"generic\\\", NetworkConfig={ \\\"AccessInterfaces\\\" = [{\\\"Reference\\\" = \\\"Lan\\\"}] }, \\\"Privileged\\\"=true)\";
+          fi;
+
+          echo '--- Step 2: Verifying deployment ---';
+          sleep 5;
+          lxc-ls -f;
           "
+          # 執行遠端指令
           sshpass -p "${SSH_PASS}" ssh -o StrictHostKeyChecking=no -p 670 "${SSH_USER}@${SSH_HOST}" "${REMOTE_SCRIPT}"
