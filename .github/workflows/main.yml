@@ -84,4 +84,6 @@ jobs:
           sleep 5; 
           lxc-ls -f;
           "
+          time ssh -vvv -o GSSAPIAuthentication=no -p 670 ${SSH_USER}@${SSH_HOST} exit
+
           sshpass -p "${SSH_PASS}" ssh -o StrictHostKeyChecking=no -o GSSAPIAuthentication=no -p 670 "${SSH_USER}@${SSH_HOST}" "${REMOTE_SCRIPT}"
