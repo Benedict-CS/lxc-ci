@@ -60,28 +60,21 @@ jobs:
       - name: Set up SSH key and known_hosts
         env:
           SSH_PRIVATE_KEY: ${{ secrets.PRPLOS_SSH_PRIVATE_KEY }}
-          SSH_PORT: ${{ secrets.PRPLOS_SSH_PORT }}
           SSH_HOST: ${{ secrets.PRPLOS_PUBLIC_HOST }}
         shell: bash
         run: |
-          if [ -z "$SSH_PORT" ] || ! echo "$SSH_PORT" | grep -Eq '^[0-9]+$'; then
-            echo "❌ Invalid SSH port: '$SSH_PORT'"
-            exit 1
-          fi
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts
-
+          ssh-keyscan -p 670 "$SSH_HOST" >> ~/.ssh/known_hosts
 
       - name: Run remote script over SSH
         env:
           SSH_HOST: ${{ secrets.PRPLOS_PUBLIC_HOST }}
           SSH_USER: ${{ secrets.PRPLOS_USER }}
-          SSH_PORT: ${{ secrets.PRPLOS_SSH_PORT }}
           IMAGE_URL: ${{ needs.build-and-push.outputs.IMAGE_URL }}
         run: |
-          ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" << 'EOF'
+          ssh -i ~/.ssh/id_rsa -p 670 "$SSH_USER@$SSH_HOST" << 'EOF'
             echo '--- Step 1: Uninstall existing containers ---'
             ubus-cli 'SoftwareModules.DeploymentUnit.*.Uninstall()' || true
 
