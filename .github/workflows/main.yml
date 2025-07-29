@@ -60,13 +60,6 @@ jobs:
       - name: 1. Install SSH client (Optimized)
         run: sudo apt-get install -y sshpass
 
-      - name: Set up SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.PRPLOS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -p 670 -H your.remote.host >> ~/.ssh/known_hosts
-
       - name: 2. Deploy via Phoenix Strategy (Uninstall + Install)
         env:
           SSH_HOST: ${{ secrets.PRPLOS_PUBLIC_HOST }}
