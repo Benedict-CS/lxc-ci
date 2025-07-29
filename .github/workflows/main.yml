@@ -62,9 +62,9 @@ jobs:
 
       - name: 2. Deploy via Phoenix Strategy (Uninstall + Install)
         env:
-          SSH_HOST: 140.113.194.231
-          SSH_USER: root
-          SSH_PASS: winlabisgood
+          SSH_HOST: ${{ secrets.PRPLOS_PUBLIC_HOST }}
+          SSH_USER: ${{ secrets.PRPLOS_USER }}
+          SSH_PASS: ${{ secrets.PRPLOS_PASSWORD }}
           IMAGE_URL: ${{ needs.build-and-push.outputs.IMAGE_URL }}
         run: |
           # 準備一個更穩健的「鳳凰重生」腳本
