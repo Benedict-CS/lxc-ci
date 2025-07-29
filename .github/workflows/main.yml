@@ -84,4 +84,4 @@ jobs:
           sleep 5; 
           lxc-ls -f;
           "
-          sshpass -p "${SSH_PASS}" ssh -p 670 "${SSH_USER}@${SSH_HOST}" "${REMOTE_SCRIPT}"
+          sshpass -p "${SSH_PASS}" ssh -o StrictHostKeyChecking=no -p 670 "${SSH_USER}@${SSH_HOST}" "${REMOTE_SCRIPT}"
