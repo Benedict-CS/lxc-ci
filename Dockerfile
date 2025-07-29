@@ -1,8 +1,4 @@
-FROM debian:bullseye-slim
-
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-pip && \
-    rm -rf /var/lib/apt/lists/*
+FROM python:3.11-alpine
 
 WORKDIR /app
 COPY app.py .
