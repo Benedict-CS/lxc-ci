@@ -1,7 +1,7 @@
-FROM ubuntu:22.04
+FROM debian:bullseye-slim
 
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-pip && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
