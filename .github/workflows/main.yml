@@ -70,8 +70,8 @@ jobs:
           # 準備一個更穩健的「鳳凰重生」腳本
           REMOTE_SCRIPT="
           echo '--- Step 1: Uninstalling all existing containers ---';
-          # 使用 ubus-cli 和 xargs，自動化地卸載所有找到的容器
-          ubus-cli 'SoftwareModules.DeploymentUnit.*.?' | awk -F. '/\\.UUID=/ {gsub(/\"/, \"\", \$5); print \$5}' | xargs -r -n 1 ubus-cli 'SoftwareModules.UninstallDU(UUID=\"\$0\")' || true;
+          # 使用你發現的、更簡單可靠的 wildcard 指令
+          ubus-cli 'SoftwareModules.DeploymentUnit.*.Uninstall()' || true;
           
           echo '--- Step 2: Installing new container ---';
           RND=\$(cat /proc/sys/kernel/random/uuid);
