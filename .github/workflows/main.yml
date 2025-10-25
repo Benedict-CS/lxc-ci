@@ -60,96 +60,13 @@ jobs:
     steps:
       - name: 1. Get Authentication Token and Set Env Var
         id: auth
-        run: |
-          echo "Attempting to retrieve token for email: test@gmail.com"
-          
-          # MODIFIED: 移除 --verbose 後的註解，並確保反斜線正確
-          TOKEN=$(curl --location --request PUT 'http://${{ env.API_HOST }}/api/auth/login' \
-            --header 'Content-Type: application/json' \
-            --verbose \
-            --data-raw '{
-                "email": "test@gmail.com",
-                "password": "test"
-            }' | tee /dev/stderr | tr -d '"')
-            
-          echo "Raw curl output processed."
-            
-          # 檢查 TOKEN 是否為空
-          if [ -z "$TOKEN" ]; then
-            echo "::error::Failed to retrieve authentication token. Check secrets, API connectivity, or curl output above for errors."
-            exit 1
-          fi
-          
-          echo "Successfully retrieved auth token (masked)."
-          echo "::add-mask::$TOKEN" # 遮罩 Token
-          echo "API_TOKEN=$TOKEN" >> $GITHUB_ENV
+        run: |    
+          TOKEN=$(curl --location --request PUT 'http://140.113.194.249/api/auth/login' \
+          --header 'Content-Type: application/json' \
+          --silent \
+          --data-raw '{
+              "email": "test@gmail.com",
+              "password": "test"
+          }' | tr -d '"')
 
-      - name: 2. Uninstall All Existing Containers
-        id: uninstall
-        # REMOVED: 不再需要 env: API_TOKEN 或在 run 中重新賦值
-        run: |
-          # MODIFIED: 直接使用 $API_TOKEN 環境變數
-          echo "--- Finding existing LXC instances on device: ${{ env.DEVICE_ID }} ---"
-          
-          INSTANCES=$(curl --location \
-            --request PUT 'http://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/get' \
-            --header 'Content-Type: application/json' \
-            --header "Authorization: ${API_TOKEN}" \
-            --silent \
-            --data-raw '{
-                "param_paths": ["Device.LCM.LXC."],
-                "max_depth": 1
-            }' | jq -r '.req_path_results[0].resolved_path_results[].resolved_path')
-
-          if [ -z "$INSTANCES" ]; then
-            echo "No existing LXC instances found to uninstall. Skipping."
-          else
-            echo "Found instances to delete:"
-            echo "$INSTANCES"
-            
-            for path in $INSTANCES; do
-              echo "--- Deleting instance: $path ---"
-              curl --location \
-                --request PUT 'http://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/del' \
-                --header 'Content-Type: application/json' \
-                --header "Authorization: ${API_TOKEN}" \
-                --data-raw "{
-                    \"allow_partial\": true,
-                    \"obj_paths\": [\"$path\"]
-                }"
-              sleep 2
-            done
-          fi
-          
-          echo "--- Uninstall phase complete. Waiting for device to process... ---"
-          sleep 10
-
-      - name: 3. Install New Container
-        id: install
-        # REMOVED: 不再需要 env: API_TOKEN 或在 run 中重新賦值
-        run: |
-          # MODIFIED: 直接使用 $API_TOKEN 環境變數
-          echo "--- Sending Add command to trigger new installation ---"
-          
-          RESPONSE=$(curl --location \
-            --request PUT 'http://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/add' \
-            --header 'Content-Type: application/json' \
-            --header "Authorization: ${API_TOKEN}" \
-            --data-raw '{
-                "allow_partial": true,
-                "create_objs": [{
-                    "obj_path": "Device.LCM.LXC."
-                }]
-            }')
-          
-          echo "Device response: $RESPONSE"
-          
-          if [[ "$RESPONSE" == *"OperSuccess"* ]]; then
-            echo "Successfully triggered installation."
-          else
-            echo "Failed to trigger installation! Response was: $RESPONSE"
-            exit 1
-          fi
-          
-          echo "--- Installation triggered. Waiting for container to start... ---"
-          sleep 60
+          echo $TOKEN
