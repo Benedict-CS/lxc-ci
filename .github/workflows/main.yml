@@ -62,33 +62,27 @@ jobs:
       - name: 1. Get Authentication Token and Set Env Var
         id: auth
         run: |
-          # 步驟 A: 執行 curl 並將結果存入一個 *臨時的 Shell 變數*
+          echo "Attempting to retrieve token for email: ${{ secrets.API_USER_EMAIL }}"
+          
+          # MODIFIED: 移除了 --verbose 後的註解
           TEMP_TOKEN=$(curl --location --request PUT 'http://${{ env.API_HOST }}/api/auth/login' \
             --header 'Content-Type: application/json' \
-            --verbose \ # 保留 verbose 以便除錯
-            --fail \ # <-- 新增：如果 HTTP 狀態碼不是 2xx，curl 會直接失敗退出
+            --verbose \
+            --fail \
             --data-raw '{
-                "email": "test@gmail.com",
-                "password": "test"
+                "email": "${{ secrets.API_USER_EMAIL }}",
+                "password": "${{ secrets.API_USER_PASSWORD }}"
             }' | tee /dev/stderr | tr -d '"')
             
-          CURL_EXIT_CODE=$? # 取得 curl 的結束代碼
+          CURL_EXIT_CODE=$? 
           echo "Raw curl output processed. Exit code: $CURL_EXIT_CODE" 
             
-          # 步驟 B: 檢查 curl 是否成功以及 Token 是否為空
+          # 檢查 curl 是否成功以及 Token 是否為空
           if [ $CURL_EXIT_CODE -ne 0 ] || [ -z "$TEMP_TOKEN" ]; then
             echo "::error::Failed to retrieve authentication token. Curl exit code: $CURL_EXIT_CODE. Check secrets, API connectivity, or curl output above."
             exit 1
           fi
           
-          # 步驟 C: 將成功的 Token 寫入 GITHUB_ENV
           echo "Successfully retrieved auth token (masked)."
           echo "::add-mask::$TEMP_TOKEN" # 遮罩 Token
-          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV # <--- 寫入 GITHUB_ENV
-
-      # --- 後續步驟可以像這樣直接使用 $TOKEN ---
-      - name: 2. (測試) Show Token
-        run: |
-          echo "Token from GITHUB_ENV: $TOKEN" 
-          # 在你的 Uninstall 和 Install 步驟中，就可以直接用 $TOKEN 或 ${TOKEN} 了
-          # 例如： --header "Authorization: ${TOKEN}"
+          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
