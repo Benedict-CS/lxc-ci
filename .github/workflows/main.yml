@@ -59,25 +59,26 @@ jobs:
 
     steps:
       - name: 1. Get Authentication Token
-        # ... (Token 步驟不變) ...
         id: auth
         run: |
           TOKEN=$(curl --location --request PUT 'http://${{ env.API_HOST }}/api/auth/login' \
             --header 'Content-Type: application/json' \
             --silent \
             --data-raw '{
-                "email": "test@gmail.com",
-                "password": "test"
+                "email": "${{ secrets.API_USER_EMAIL }}",
+                "password": "${{ secrets.API_USER_PASSWORD }}"
             }' | tr -d '"')
           echo "Successfully retrieved auth token."
+          echo "::add-mask::$TOKEN" # 遮罩 Token
           echo "TOKEN=$TOKEN" >> $GITHUB_OUTPUT
 
       - name: 2. Uninstall All Existing Containers
-        # ... (Uninstall 步驟不變) ...
         id: uninstall
-        env:
-          API_TOKEN: ${{ steps.auth.outputs.TOKEN }}
+        # REMOVED: 移除 env: API_TOKEN: ...
         run: |
+          # MODIFIED: 直接在 curl 中使用 ${{ steps.auth.outputs.TOKEN }}
+          API_TOKEN="${{ steps.auth.outputs.TOKEN }}" # 將輸出存入 shell 變數以便使用
+          
           echo "--- Finding existing LXC instances on device: ${{ env.DEVICE_ID }} ---"
           
           INSTANCES=$(curl --location \
@@ -111,17 +112,18 @@ jobs:
           fi
           
           echo "--- Uninstall phase complete. Waiting for device to process... ---"
-          sleep 5
+          sleep 10
 
       - name: 3. Install New Container
         id: install
-        env:
-          API_TOKEN: ${{ steps.auth.outputs.TOKEN }}
+        # REMOVED: 移除 env: API_TOKEN: ...
         run: |
+          # MODIFIED: 直接在 curl 中使用 ${{ steps.auth.outputs.TOKEN }}
+          API_TOKEN="${{ steps.auth.outputs.TOKEN }}" # 將輸出存入 shell 變數以便使用
+          
           echo "--- Sending Add command to trigger new installation ---"
           
-          # MODIFIED: 在 curl 指令結尾加上 || true
-          # 這會忽略 (56) Connection reset 錯誤，並讓 pipeline 繼續
+          # REMOVED: 移除 '|| true'，因為我們期望成功
           RESPONSE=$(curl --location \
             --request PUT 'http://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/add' \
             --header 'Content-Type: application/json' \
@@ -131,13 +133,16 @@ jobs:
                 "create_objs": [{
                     "obj_path": "Device.LCM.LXC."
                 }]
-            }') || true # <--- 修正就在這裡！
+            }')
           
-          echo "Device response (if any): $RESPONSE"
+          echo "Device response: $RESPONSE"
           
-          # MODIFIED: 因為 curl 可能會失敗，我們簡化成功檢查
-          # 我們假設指令已發送，並依靠後續的 sleep
-          echo "Successfully triggered installation (assuming command was sent)."
+          if [[ "$RESPONSE" == *"OperSuccess"* ]]; then
+            echo "Successfully triggered installation."
+          else
+            echo "Failed to trigger installation! Response was: $RESPONSE"
+            exit 1
+          fi
           
           echo "--- Installation triggered. Waiting for container to start... ---"
-          sleep 13 # 由於下載可能很慢，將等待時間延長
+          sleep 60
