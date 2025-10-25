@@ -15,7 +15,7 @@ jobs:
   #====================================================
   # CI Job: Build and Push Docker Image (你的版本)
   #====================================================
-  CI Pipeline:
+  CI-Pipeline:
     name: 1. Build and Push Image
     runs-on: ubuntu-latest
     outputs:
@@ -60,9 +60,9 @@ jobs:
   #====================================================
   # CD Job: Deploy to Device via USP Controller
   #====================================================
-  CD Pipeline:
+  CD-Pipeline:
     name: 2. Deploy to AP via USP API
-    needs: CI Pipeline
+    needs: CI-Pipeline
     runs-on: ubuntu-latest
 
     steps:
