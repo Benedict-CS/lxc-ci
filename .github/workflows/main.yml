@@ -58,8 +58,8 @@ jobs:
   #====================================================
   # CD Job: Deploy to Device via USP Controller
   #====================================================
-  CD-Pipeline:
-    name: 2. Deploy to AP via USP API
+  Deploy to AP via USP API:
+    name: CD-Pipeline
     needs: CI-Pipeline
     runs-on: ubuntu-latest
 
