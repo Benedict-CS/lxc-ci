@@ -61,15 +61,15 @@ jobs:
       - name: 1. Get Authentication Token and Set Env Var
         id: auth
         run: |
-          echo "Attempting to retrieve token for email: ${{ secrets.API_USER_EMAIL }}"
+          echo "Attempting to retrieve token for email: test@gmail.com"
           
           # MODIFIED: 移除 --verbose 後的註解，並確保反斜線正確
           TOKEN=$(curl --location --request PUT 'http://${{ env.API_HOST }}/api/auth/login' \
             --header 'Content-Type: application/json' \
             --verbose \
             --data-raw '{
-                "email": "${{ secrets.API_USER_EMAIL }}",
-                "password": "${{ secrets.API_USER_PASSWORD }}"
+                "email": "test@gmail.com",
+                "password": "test"
             }' | tee /dev/stderr | tr -d '"')
             
           echo "Raw curl output processed."
