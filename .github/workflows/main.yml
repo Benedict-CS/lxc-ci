@@ -16,7 +16,7 @@ jobs:
   # CI Job: Build and Push Docker Image (你的版本)
   #====================================================
   CI-Pipeline:
-    name: CI-Pipeline
+    name: 1. CI-Pipeline
     runs-on: ubuntu-latest
     outputs:
       IMAGE_URL: ${{ steps.meta.outputs.IMAGE_URL }}
@@ -53,7 +53,7 @@ jobs:
   # CD Job: Deploy to Device via USP Controller
   #====================================================
   CD-Pipeline:
-    name: 2. Deploy to AP via USP
+    name: 2. CD-Pipeline
     needs: CI-Pipeline # 恢復依賴關係
     runs-on: ubuntu-latest
 
