@@ -62,36 +62,12 @@ jobs:
       - name: 1. Get Authentication Token and Set Env Var
         id: auth
         run: |
-          set -o pipefail 
+          TOKEN=$(curl --location --request PUT 'https://controller.benedicttiong.site/api/auth/login' \
+          --header 'Content-Type: application/json' \
+          --silent \
+          --data-raw '{
+              "email": "test@gmail.com",
+              "password": "test"
+          }' | tr -d '"')  
 
-          echo "Attempting to retrieve token with hardcoded credentials..."
-
-          TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
-            --header 'Content-Type: application/json' \
-            --verbose \
-            --fail \
-            --connect-timeout 10 \
-            --max-time 20 \   
-            --data-raw '{
-                "email": "test@gmail.com",
-                "password": "test"
-            }' | tee /dev/stderr | tr -d '"')
-
-          CURL_EXIT_CODE=$?
-          echo "Raw curl output processed. Exit code: $CURL_EXIT_CODE"
-
-          # MODIFIED: 先檢查 CURL_EXIT_CODE
-          if [ $CURL_EXIT_CODE -ne 0 ]; then
-             echo "::error::curl command failed with exit code $CURL_EXIT_CODE. Check API connectivity or curl output above."
-             exit 1
-          fi
-
-          # 再檢查 TOKEN 是否為空 (理論上 --fail 應該會捕捉到應用層錯誤)
-          if [ -z "$TEMP_TOKEN" ]; then
-            echo "::error::Failed to retrieve authentication token (Token is empty). Check API response or Nginx logs on server."
-            exit 1
-          fi
-
-          echo "Successfully retrieved auth token (masked)."
-          echo "::add-mask::$TEMP_TOKEN"
-          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
+          echo $TOKEN
