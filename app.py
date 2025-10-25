@@ -10,8 +10,9 @@ class SimpleWebServer(BaseHTTPRequestHandler):
         self.send_header("Content-type", "text/html")
         self.end_headers()
 
-        html_content = f"""Version: {VERSION}"""
-        
+        html_content = f"""Version: {VERSION}
+"""
+
         self.wfile.write(bytes(html_content, "utf-8"))
 
 if __name__ == "__main__":
