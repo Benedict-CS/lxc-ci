@@ -140,4 +140,4 @@ jobs:
           echo "Successfully triggered installation (assuming command was sent)."
           
           echo "--- Installation triggered. Waiting for container to start... ---"
-          sleep 15 # 由於下載可能很慢，將等待時間延長
+          sleep 14 # 由於下載可能很慢，將等待時間延長
