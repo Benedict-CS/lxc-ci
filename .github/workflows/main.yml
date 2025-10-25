@@ -10,6 +10,7 @@ env:
   IMAGE_NAME: test-service
   API_HOST: 140.113.194.249 # 建議將此 IP 也放入 Secret
   DEVICE_ID: "test-1"
+  TOKEN: ""
 
 jobs:
   #====================================================
@@ -61,7 +62,7 @@ jobs:
       - name: 1. Get Authentication Token and Set Env Var
         id: auth
         run: |    
-          TOKEN=$(curl --location --request PUT 'http://140.113.194.249/api/auth/login' \
+          ${{ env.REGISTRY_DOMAIN }}=(curl --location --request PUT 'http://140.113.194.249/api/auth/login' \
           --header 'Content-Type: application/json' \
           --silent \
           --data-raw '{
@@ -69,4 +70,4 @@ jobs:
               "password": "test"
           }' | tr -d '"')
 
-          echo $TOKEN
+          echo ${{ env.REGISTRY_DOMAIN }}
