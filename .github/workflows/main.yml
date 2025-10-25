@@ -62,27 +62,36 @@ jobs:
       - name: 1. Get Authentication Token and Set Env Var
         id: auth
         run: |
-          echo "Attempting to retrieve token for email: test"
-          
-          # MODIFIED: 移除了 --verbose 後的註解
+          set -o pipefail # <-- 新增：讓 pipeline 的結束代碼是第一個失敗指令的代碼
+
+          echo "Attempting to retrieve token with hardcoded credentials..."
+
           TEMP_TOKEN=$(curl --location --request PUT 'http://${{ env.API_HOST }}/api/auth/login' \
             --header 'Content-Type: application/json' \
             --verbose \
             --fail \
+            --connect-timeout 10 \
+            --max-time 20 \   
             --data-raw '{
                 "email": "test@gmail.com",
                 "password": "test"
             }' | tee /dev/stderr | tr -d '"')
-            
-          CURL_EXIT_CODE=$? 
-          echo "Raw curl output processed. Exit code: $CURL_EXIT_CODE" 
-            
-          # 檢查 curl 是否成功以及 Token 是否為空
-          if [ $CURL_EXIT_CODE -ne 0 ] || [ -z "$TEMP_TOKEN" ]; then
-            echo "::error::Failed to retrieve authentication token. Curl exit code: $CURL_EXIT_CODE. Check secrets, API connectivity, or curl output above."
+
+          CURL_EXIT_CODE=$?
+          echo "Raw curl output processed. Exit code: $CURL_EXIT_CODE"
+
+          # MODIFIED: 先檢查 CURL_EXIT_CODE
+          if [ $CURL_EXIT_CODE -ne 0 ]; then
+             echo "::error::curl command failed with exit code $CURL_EXIT_CODE. Check API connectivity or curl output above."
+             exit 1
+          fi
+
+          # 再檢查 TOKEN 是否為空 (理論上 --fail 應該會捕捉到應用層錯誤)
+          if [ -z "$TEMP_TOKEN" ]; then
+            echo "::error::Failed to retrieve authentication token (Token is empty). Check API response or Nginx logs on server."
             exit 1
           fi
-          
+
           echo "Successfully retrieved auth token (masked)."
-          echo "::add-mask::$TEMP_TOKEN" # 遮罩 Token
+          echo "::add-mask::$TEMP_TOKEN"
           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
