@@ -27,28 +27,28 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      # - name: Set up QEMU
+      #   uses: docker/setup-qemu-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      # - name: Set up Docker Buildx
+      #   uses: docker/setup-buildx-action@v3
         
-      - name: Generate Image Metadata
-        id: meta
-        run: |
-          VERSION=$(date +%Y%m%d)-$(git rev-parse --short HEAD)
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "IMAGE_URL=${{ env.REGISTRY_DOMAIN }}/${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
-          echo "Generated Tag: $VERSION"
+      # - name: Generate Image Metadata
+      #   id: meta
+      #   run: |
+      #     VERSION=$(date +%Y%m%d)-$(git rev-parse --short HEAD)
+      #     echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+      #     echo "IMAGE_URL=${{ env.REGISTRY_DOMAIN }}/${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
+      #     echo "Generated Tag: $VERSION"
 
-      - name: Build and Push Image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
-          provenance: false
+      # - name: Build and Push Image
+      #   uses: docker/build-push-action@v5
+      #   with:
+      #     context: .
+      #     platforms: linux/arm64
+      #     push: true
+      #     tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
+      #     provenance: false
 
   #====================================================
   # CD Job: Deploy to Device via USP Controller
@@ -62,7 +62,7 @@ jobs:
       - name: 1. Get Authentication Token and Set Env Var
         id: auth
         run: |
-          echo "Attempting to retrieve token for email: ${{ secrets.API_USER_EMAIL }}"
+          echo "Attempting to retrieve token for email: test"
           
           # MODIFIED: 移除了 --verbose 後的註解
           TEMP_TOKEN=$(curl --location --request PUT 'http://${{ env.API_HOST }}/api/auth/login' \
@@ -70,8 +70,8 @@ jobs:
             --verbose \
             --fail \
             --data-raw '{
-                "email": "${{ secrets.API_USER_EMAIL }}",
-                "password": "${{ secrets.API_USER_PASSWORD }}"
+                "email": "test@gmail.com",
+                "password": "test"
             }' | tee /dev/stderr | tr -d '"')
             
           CURL_EXIT_CODE=$? 
