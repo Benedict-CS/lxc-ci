@@ -61,25 +61,31 @@ jobs:
       - name: 1. Get Authentication Token and Set Env Var
         id: auth
         run: |
+          echo "Attempting to retrieve token for email: ${{ secrets.API_USER_EMAIL }}" # <-- 新增：檢查 Secret 是否被讀取
+          
+          # MODIFIED: 移除了 --silent 參數
           TOKEN=$(curl --location --request PUT 'http://${{ env.API_HOST }}/api/auth/login' \
             --header 'Content-Type: application/json' \
-            --silent \
+            --verbose \ # <-- 新增：顯示詳細的 curl 連線過程
             --data-raw '{
-                "email": "test@gmail.com",
-                "password": "test"
-            }' | tr -d '"')
+                "email": "${{ secrets.API_USER_EMAIL }}",
+                "password": "${{ secrets.API_USER_PASSWORD }}"
+            }' | tee /dev/stderr | tr -d '"') # <-- 新增：同時印出 curl 的原始輸出 (包含可能的錯誤訊息) 到 stderr
             
+          echo "Raw curl output processed." # <-- 新增：確認 curl 執行完畢
+            
+          sleep 2 # <-- 新增：稍作等待，確保輸出完整
+          echo $TOKEN # <-- 新增：印出取得的 Token (用於除錯)
+          
           # 檢查 TOKEN 是否為空
           if [ -z "$TOKEN" ]; then
-            echo "::error::Failed to retrieve authentication token. Check secrets or API connectivity."
+            echo "::error::Failed to retrieve authentication token. Check secrets, API connectivity, or curl output above for errors."
             exit 1
           fi
           
-          echo "Successfully retrieved auth token."
+          echo "Successfully retrieved auth token (masked)."
           echo "::add-mask::$TOKEN" # 遮罩 Token
-          
-          # MODIFIED: 將 Token 寫入 GITHUB_ENV，使其成為後續步驟的環境變數
-          echo "API_TOKEN=$TOKEN" >> $GITHUB_ENV 
+          echo "API_TOKEN=$TOKEN" >> $GITHUB_ENV
 
       - name: 2. Uninstall All Existing Containers
         id: uninstall
