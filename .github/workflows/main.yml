@@ -54,7 +54,7 @@ jobs:
   #====================================================
   CD-Pipeline:
     name: 2. Deploy to AP via USP
-    needs: CI-Pipeline # 恢復依賴關係
+    #needs: CI-Pipeline # 恢復依賴關係
     runs-on: ubuntu-latest
 
     steps:
@@ -100,19 +100,20 @@ jobs:
           echo "--- Finding existing LXC instances on device: ${{ env.DEVICE_ID }} ---"
 
           # 直接使用 $TOKEN 環境變數，使用 HTTPS
+          # MODIFIED: Removed comment after --fail \
           INSTANCES=$(curl --location \
             --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/get' \
             --header 'Content-Type: application/json' \
             --header "Authorization: ${TOKEN}" \
             --silent \
-            --fail \ # 加入 fail 確保 API 錯誤會中止
+            --fail \
             --data-raw '{
                 "param_paths": ["Device.LCM.LXC."],
                 "max_depth": 1
             }' | jq -r '.req_path_results[0].resolved_path_results[].resolved_path')
           
           CURL_EXIT_CODE=$?
-          if [ $CURL_EXIT_CODE -ne 0 ] && [ $CURL_EXIT_CODE -ne 22 ]; then # 忽略 404 (找不到) 錯誤
+          if [ $CURL_EXIT_CODE -ne 0 ] && [ $CURL_EXIT_CODE -ne 22 ]; then # 忽略 404 (找不到) 錯誤 (HTTP 404 對應 curl code 22)
              echo "::error::Failed to get instances. Curl exit code: $CURL_EXIT_CODE."
              exit 1
           fi
@@ -125,11 +126,12 @@ jobs:
 
             for path in $INSTANCES; do
               echo "--- Deleting instance: $path ---"
+              # MODIFIED: Removed comment after --fail \
               curl --location \
                 --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/del' \
                 --header 'Content-Type: application/json' \
                 --header "Authorization: ${TOKEN}" \
-                --fail \ # 加入 fail
+                --fail \
                 --data-raw "{
                     \"allow_partial\": true,
                     \"obj_paths\": [\"$path\"]
@@ -152,11 +154,12 @@ jobs:
           echo "--- Sending Add command to trigger new installation ---"
 
           # 直接使用 $TOKEN 環境變數，使用 HTTPS
+          # MODIFIED: Removed comment after --fail \
           RESPONSE=$(curl --location \
             --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/add' \
             --header 'Content-Type: application/json' \
             --header "Authorization: ${TOKEN}" \
-            --fail \ # 加入 fail
+            --fail \
             --data-raw '{
                 "allow_partial": true,
                 "create_objs": [{
