@@ -70,4 +70,6 @@ jobs:
               "password": "test"
           }' | tr -d '"')  
 
-          echo $TOKEN
+          ${{ steps.meta.outputs.IMAGE_TAG }} =  $TOKEN
+
+          echo ${{ steps.meta.outputs.IMAGE_TAG }}
