@@ -49,29 +49,6 @@ jobs:
           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
           provenance: false
 
-  你的觀察完全正確！
-
-Log 清楚地顯示了 API_TOKEN=""，代表 ${{ steps.auth.outputs.TOKEN }} 這個表達式在後續步驟中被解析為空字串。這確實是目前 CI/CD 失敗的原因。
-
-為什麼會這樣？
-
-理論上，API_TOKEN="${{ steps.auth.outputs.TOKEN }}" 這種語法是 GitHub Actions 中跨步驟傳遞輸出的標準方法。它之所以會失敗，最可能的原因是：
-
-Secrets 未設定：你在 Get Authentication Token 步驟中使用了 ${{ secrets.API_USER_EMAIL }} 和 ${{ secrets.API_USER_PASSWORD }}。如果你尚未在 GitHub Repo 的 Settings > Secrets and variables > Actions 中設定這兩個 Secrets，curl 指令會因為缺少帳號密碼而靜默失敗 (因為有 --silent 參數)，導致 TOKEN 變數為空。即使 log 印出了 "Successfully retrieved auth token."，實際的 TOKEN 可能是空的。
-
-罕見的 Context 問題：極少數情況下，GitHub Actions 的 context (上下文) 可能會有傳遞問題。
-
-你的提議：「直接用變數存不就好了？」
-
-是的，這是一個非常好的替代方案！我們可以利用 GitHub Actions 提供的特殊檔案 GITHUB_ENV 來設定一個在後續所有步驟中都可用的環境變數。這比使用 outputs 更直接。
-
-✅ 解決方案：使用 GITHUB_ENV
-我們將修改 Get Authentication Token 步驟，讓它取得 Token 後，將其寫入 $GITHUB_ENV。後續步驟就可以像使用普通環境變數一樣直接使用 $API_TOKEN 了。
-
-請用以下修正後的 CD-Pipeline job 替換你 YAML 檔案中的對應部分：
-
-YAML
-
   #====================================================
   # CD Job: Deploy to Device via USP Controller
   #====================================================
