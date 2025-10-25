@@ -66,12 +66,13 @@ jobs:
 
           echo "Attempting to retrieve token with hardcoded credentials..."
 
+          # MODIFIED: 移除了所有 curl 指令內部的行尾註解
           TEMP_TOKEN=$(curl --location --request PUT 'http://${{ env.API_HOST }}/api/auth/login' \
             --header 'Content-Type: application/json' \
             --verbose \
             --fail \
             --connect-timeout 10 \
-            --max-time 20 \   
+            --max-time 20 \
             --data-raw '{
                 "email": "test@gmail.com",
                 "password": "test"
@@ -94,4 +95,4 @@ jobs:
 
           echo "Successfully retrieved auth token (masked)."
           echo "::add-mask::$TEMP_TOKEN"
-          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
+          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV # 寫入 GITHUB_ENV
