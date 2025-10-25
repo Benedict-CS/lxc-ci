@@ -8,19 +8,20 @@ on:
 env:
   REGISTRY_DOMAIN: registry.benedicttiong.site
   IMAGE_NAME: test-service
-  API_HOST: controller.benedicttiong.site # 建議將此 IP 也放入 Secret
+  API_HOST: controller.benedicttiong.site
   DEVICE_ID: "test-1"
 
 jobs:
   #====================================================
-  # CI Job: Build and Push Docker Image (你的版本)
+  # CI Job: Build and Push Docker Image
   #====================================================
   CI-Pipeline:
     name: 1. CI-Pipeline
     runs-on: ubuntu-latest
     outputs:
       IMAGE_URL: ${{ steps.meta.outputs.IMAGE_URL }}
-      IMAGE_TAG: ${{ steps.meta.outputs.IMAGE_TAG }}
+      # MODIFIED: 修正了 output 名稱 (之前是 IMAGE_TAG，但 meta 步驟是輸出 VERSION)
+      VERSION: ${{ steps.meta.outputs.VERSION }}
 
     steps:
       - name: Checkout Code
@@ -46,6 +47,7 @@ jobs:
           context: .
           platforms: linux/arm64
           push: true
+          # 這裡使用 steps.meta.outputs.VERSION 是正確的
           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
           provenance: false
 
@@ -54,18 +56,16 @@ jobs:
   #====================================================
   CD-Pipeline:
     name: 2. CD-Pipeline
-    needs: CI-Pipeline # 恢復依賴關係
+    needs: CI-Pipeline # 依賴 CI Job
     runs-on: ubuntu-latest
 
     steps:
       - name: 1. Get Authentication Token and Set Env Var
         id: auth
         run: |
-          set -o pipefail # 讓 pipeline 的結束代碼是第一個失敗指令的代碼
-
+          set -o pipefail 
           echo "Attempting to retrieve token using HTTPS and domain name..."
 
-          # 使用 HTTPS 和網域名稱，直接填入帳密 (或改回 secrets)
           TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
             --header 'Content-Type: application/json' \
             --verbose \
@@ -81,8 +81,8 @@ jobs:
           echo "Raw curl output processed. Exit code: $CURL_EXIT_CODE"
 
           if [ $CURL_EXIT_CODE -ne 0 ]; then
-             echo "::error::curl command failed with exit code $CURL_EXIT_CODE. Check API connectivity or curl output above."
-             exit 1
+            echo "::error::curl command failed with exit code $CURL_EXIT_CODE. Check API connectivity or curl output above."
+            exit 1
           fi
 
           if [ -z "$TEMP_TOKEN" ]; then
@@ -99,8 +99,6 @@ jobs:
         run: |
           echo "--- Finding existing LXC instances on device: ${{ env.DEVICE_ID }} ---"
 
-          # 直接使用 $TOKEN 環境變數，使用 HTTPS
-          # MODIFIED: Removed comment after --fail \
           INSTANCES=$(curl --location \
             --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/get' \
             --header 'Content-Type: application/json' \
@@ -113,9 +111,9 @@ jobs:
             }' | jq -r '.req_path_results[0].resolved_path_results[].resolved_path')
           
           CURL_EXIT_CODE=$?
-          if [ $CURL_EXIT_CODE -ne 0 ] && [ $CURL_EXIT_CODE -ne 22 ]; then # 忽略 404 (找不到) 錯誤 (HTTP 404 對應 curl code 22)
-             echo "::error::Failed to get instances. Curl exit code: $CURL_EXIT_CODE."
-             exit 1
+          if [ $CURL_EXIT_CODE -ne 0 ] && [ $CURL_EXIT_CODE -ne 22 ]; then # 忽略 404 (找不到) 錯誤
+            echo "::error::Failed to get instances. Curl exit code: $CURL_EXIT_CODE."
+            exit 1
           fi
 
           if [ -z "$INSTANCES" ]; then
@@ -126,7 +124,6 @@ jobs:
 
             for path in $INSTANCES; do
               echo "--- Deleting instance: $path ---"
-              # MODIFIED: Removed comment after --fail \
               curl --location \
                 --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/del' \
                 --header 'Content-Type: application/json' \
@@ -137,42 +134,72 @@ jobs:
                     \"obj_paths\": [\"$path\"]
                 }"
               DEL_EXIT_CODE=$?
-               if [ $DEL_EXIT_CODE -ne 0 ]; then
+                if [ $DEL_EXIT_CODE -ne 0 ]; then
                   echo "::warning::Failed to delete instance $path (Exit code: $DEL_EXIT_CODE). Continuing..."
-                  # 不中止，繼續刪除下一個
-               fi
-              sleep 2 # 增加等待時間
+                fi
+              sleep 2
             done
           fi
 
           echo "--- Uninstall phase complete. Waiting for device to process... ---"
-          sleep 5 # 增加等待時間
+          sleep 5
 
+      # ===================================================================
+      # MODIFIED: 這是你需要的修正
+      # ===================================================================
       - name: 3. Install New Container
         id: install
         run: |
-          echo "--- Sending Add command to trigger new installation ---"
+          echo "--- Sending Add command with param_settings to trigger new installation ---"
+          
+          # 從 CI Job 獲取 ImageURL 和 Version
+          IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
+          ALIAS="ci-cd-${{ needs.CI-Pipeline.outputs.VERSION }}"
+          
+          echo "Installing with ImageURL: $IMAGE_URL_WITH_PREFIX"
+          echo "Using Alias: $ALIAS"
 
-          # 直接使用 $TOKEN 環境變數，使用 HTTPS
-          # MODIFIED: Removed comment after --fail \
+          # 使用 cat <<EOF 來建立乾淨的 JSON payload
+          JSON_PAYLOAD=$(cat <<EOF
+          {
+              "allow_partial": true,
+              "create_objs": [
+                  {
+                      "obj_path": "Device.LCM.LXC.",
+                      "param_settings": [
+                          {
+                              "param": "Alias",
+                              "value": "$ALIAS",
+                              "required": true
+                          },
+                          {
+                              "param": "ImageURL",
+                              "value": "$IMAGE_URL_WITH_PREFIX",
+                              "required": true
+                          }
+                      ]
+                  }
+              ]
+          }
+          EOF
+          )
+          
+          echo "Sending Payload:"
+          echo "$JSON_PAYLOAD"
+          
           RESPONSE=$(curl --location \
             --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/add' \
             --header 'Content-Type: application/json' \
             --header "Authorization: ${TOKEN}" \
             --fail \
-            --data-raw '{
-                "allow_partial": true,
-                "create_objs": [{
-                    "obj_path": "Device.LCM.LXC."
-                }]
-            }')
+            --data-raw "$JSON_PAYLOAD") # 將 JSON 變數傳入
 
           CURL_EXIT_CODE=$?
           echo "Device response: $RESPONSE"
 
           if [ $CURL_EXIT_CODE -ne 0 ]; then
-             echo "::error::Add command failed. Curl exit code: $CURL_EXIT_CODE."
-             exit 1
+            echo "::error::Add command failed. Curl exit code: $CURL_EXIT_CODE."
+            exit 1
           fi
 
           if [[ "$RESPONSE" == *"OperSuccess"* ]]; then
