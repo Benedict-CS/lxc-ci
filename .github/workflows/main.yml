@@ -55,7 +55,7 @@ jobs:
   #====================================================
   CD-Pipeline:
     name: CD-Pipeline
-    needs: CI-Pipeline
+    # needs: CI-Pipeline
     runs-on: ubuntu-latest
 
     steps:
