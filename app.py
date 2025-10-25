@@ -1,6 +1,6 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-VERSION = "1.0"
+VERSION = "1.1"
 HOST = '0.0.0.0'
 PORT = 8000
 
@@ -11,7 +11,7 @@ class SimpleWebServer(BaseHTTPRequestHandler):
         self.end_headers()
 
         html_content = f"""
-            <h1>Version: {VERSION}</h1>
+        Version: {VERSION}
         """
         self.wfile.write(bytes(html_content, "utf-8"))
 
