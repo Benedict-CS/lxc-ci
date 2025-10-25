@@ -8,7 +8,7 @@ on:
 env:
   REGISTRY_DOMAIN: registry.benedicttiong.site
   IMAGE_NAME: test-service
-  API_HOST: 140.113.194.249 # 建議將此 IP 也放入 Secret
+  API_HOST: controller.benedicttiong.site # 建議將此 IP 也放入 Secret
   DEVICE_ID: "test-1"
   TOKEN: ""
 
@@ -54,120 +54,44 @@ jobs:
   # CD Job: Deploy to Device via USP Controller
   #====================================================
   CD-Pipeline:
-    name: 2. Deploy to AP via USP
-    needs: CI-Pipeline
+    name: CD-Pipeline
+    # needs: CI-Pipeline
     runs-on: ubuntu-latest
+
     steps:
-      # --- NEW: 新增連線測試步驟 ---
-      - name: 0. Test Connectivity to Controller
-        run: |
-          echo "--- Testing basic connectivity to ${{ env.API_HOST }} ---"
-          
-          echo "Pinging host..."
-          ping -c 4 ${{ env.API_HOST }} || echo "Ping failed (might be blocked by firewall, not critical)"
-          
-          echo "--- Testing TCP Port 80 connectivity using nc ---"
-          # 安裝 netcat (nc)
-          sudo apt-get update && sudo apt-get install -y netcat-openbsd
-          
-          # 執行 nc 測試
-          if nc -zv ${{ env.API_HOST }} 80; then
-            echo "TCP Port 80 connection test SUCCEEDED (Handshake likely completed)."
-          else
-            echo "::error::TCP Port 80 connection test FAILED. Cannot establish TCP connection."
-            exit 1 # 如果 TCP 連線都建不起來，後續肯定失敗
-          fi
-          
-          # 或者使用 nmap (更強大，但需要安裝)
-          # echo "--- Testing TCP Port 80 connectivity using nmap ---"
-          # sudo apt-get update && sudo apt-get install -y nmap
-          # nmap -p 80 ${{ env.API_HOST }}
       - name: 1. Get Authentication Token and Set Env Var
         id: auth
         run: |
-          set -o pipefail # 讓 pipeline 的結束代碼是第一個失敗指令的代碼
+          set -o pipefail 
+
           echo "Attempting to retrieve token with hardcoded credentials..."
-          # 直接填入 email 和 password，移除 secrets
-          TEMP_TOKEN=$(curl --location --request PUT 'http://${{ env.API_HOST }}/api/auth/login' \
+
+          TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
             --header 'Content-Type: application/json' \
             --verbose \
             --fail \
             --connect-timeout 10 \
-            --max-time 20 \
+            --max-time 20 \   
             --data-raw '{
                 "email": "test@gmail.com",
                 "password": "test"
             }' | tee /dev/stderr | tr -d '"')
+
           CURL_EXIT_CODE=$?
           echo "Raw curl output processed. Exit code: $CURL_EXIT_CODE"
+
+          # MODIFIED: 先檢查 CURL_EXIT_CODE
           if [ $CURL_EXIT_CODE -ne 0 ]; then
              echo "::error::curl command failed with exit code $CURL_EXIT_CODE. Check API connectivity or curl output above."
-             # 即使 TCP 通了，HTTP 請求失敗仍然要報錯
              exit 1
           fi
+
+          # 再檢查 TOKEN 是否為空 (理論上 --fail 應該會捕捉到應用層錯誤)
           if [ -z "$TEMP_TOKEN" ]; then
             echo "::error::Failed to retrieve authentication token (Token is empty). Check API response or Nginx logs on server."
             exit 1
           fi
+
           echo "Successfully retrieved auth token (masked)."
           echo "::add-mask::$TEMP_TOKEN"
-          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV # 寫入 GITHUB_ENV
-      # ... (後續 Uninstall 和 Install 步驟不變) ...
-      - name: 2. Uninstall All Existing Containers
-        id: uninstall
-        run: |
-          echo "--- Finding existing LXC instances on device: ${{ env.DEVICE_ID }} ---"
-          # 使用 $TOKEN 環境變數
-          INSTANCES=$(curl --location \
-            --request PUT 'http://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/get' \
-            --header 'Content-Type: application/json' \
-            --header "Authorization: ${TOKEN}" \
-            --silent \
-            --data-raw '{
-                "param_paths": ["Device.LCM.LXC."],
-                "max_depth": 1
-            }' | jq -r '.req_path_results[0].resolved_path_results[].resolved_path')
-          if [ -z "$INSTANCES" ]; then
-            echo "No existing LXC instances found to uninstall. Skipping."
-          else
-            echo "Found instances to delete:"
-            echo "$INSTANCES"
-            for path in $INSTANCES; do
-              echo "--- Deleting instance: $path ---"
-              curl --location \
-                --request PUT 'http://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/del' \
-                --header 'Content-Type: application/json' \
-                --header "Authorization: ${TOKEN}" \
-                --data-raw "{
-                    \"allow_partial\": true,
-                    \"obj_paths\": [\"$path\"]
-                }"
-              sleep 2
-            done
-          fi
-          echo "--- Uninstall phase complete. Waiting for device to process... ---"
-          sleep 10
-      - name: 3. Install New Container
-        id: install
-        run: |
-          echo "--- Sending Add command to trigger new installation ---"
-          # 使用 $TOKEN 環境變數
-          RESPONSE=$(curl --location \
-            --request PUT 'http://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/add' \
-            --header 'Content-Type: application/json' \
-            --header "Authorization: ${TOKEN}" \
-            --data-raw '{
-                "allow_partial": true,
-                "create_objs": [{
-                    "obj_path": "Device.LCM.LXC."
-                }]
-            }')
-          echo "Device response: $RESPONSE"
-          if [[ "$RESPONSE" == *"OperSuccess"* ]]; then
-            echo "Successfully triggered installation."
-          else
-            echo "Failed to trigger installation! Response was: $RESPONSE"
-            exit 1
-          fi
-          echo "--- Installation triggered. Waiting for container to start... ---"
-          sleep 60
+          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
