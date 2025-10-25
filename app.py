@@ -11,14 +11,7 @@ class SimpleWebServer(BaseHTTPRequestHandler):
         self.end_headers()
 
         html_content = f"""
-        <html>
-        <head><title>CI/CD Test App</title></head>
-        <body style="font-family: sans-serif; text-align: center; padding-top: 5em;">
-            <h1>Deployment Successful!</h1>
-            <p>This is testing page.</p>
-            <p style="color: green; font-weight: bold;">Version: {VERSION}</p>
-        </body>
-        </html>
+            <h1>Version: {VERSION}</h1>
         """
         self.wfile.write(bytes(html_content, "utf-8"))
 
