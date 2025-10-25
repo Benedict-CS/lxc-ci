@@ -141,12 +141,12 @@ jobs:
                   echo "::warning::Failed to delete instance $path (Exit code: $DEL_EXIT_CODE). Continuing..."
                   # 不中止，繼續刪除下一個
                fi
-              sleep 3 # 增加等待時間
+              sleep 2 # 增加等待時間
             done
           fi
 
           echo "--- Uninstall phase complete. Waiting for device to process... ---"
-          sleep 15 # 增加等待時間
+          sleep 5 # 增加等待時間
 
       - name: 3. Install New Container
         id: install
