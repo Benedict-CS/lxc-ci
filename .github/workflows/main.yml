@@ -65,8 +65,8 @@ jobs:
             --header 'Content-Type: application/json' \
             --silent \
             --data-raw '{
-                "email": "${{ secrets.API_USER_EMAIL }}",
-                "password": "${{ secrets.API_USER_PASSWORD }}"
+                "email": "test@gmail.com",
+                "password": "test"
             }' | tr -d '"')
             
           # 檢查 TOKEN 是否為空
