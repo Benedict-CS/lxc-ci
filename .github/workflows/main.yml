@@ -95,4 +95,4 @@ jobs:
 
           echo "Successfully retrieved auth token (masked)."
           echo "::add-mask::$TEMP_TOKEN"
-          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV # 寫入 GITHUB_ENV
+          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV # 寫入 GITHUB_ENV  
