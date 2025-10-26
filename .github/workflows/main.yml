@@ -47,7 +47,7 @@ jobs:
           platforms: linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
-          provenance: false
+          provenance: false # Added for compatibility/simplicity if needed
 
   #====================================================
   # CD Job: Deploy to Device via USP Controller
@@ -79,12 +79,12 @@ jobs:
           echo "Raw curl output processed. Exit code: $CURL_EXIT_CODE"
 
           if [ $CURL_EXIT_CODE -ne 0 ]; then
-            echo "::error::curl command failed with exit code $CURL_EXIT_CODE."
+            echo "::error::curl command failed with exit code $CURL_EXIT_CODE. Check API connectivity or curl output above."
             exit 1
           fi
 
           if [ -z "$TEMP_TOKEN" ]; then
-            echo "::error::Failed to retrieve authentication token (Token is empty)."
+            echo "::error::Failed to retrieve authentication token (Token is empty). Check API response."
             exit 1
           fi
 
@@ -119,31 +119,23 @@ jobs:
             exit 1
           fi
 
-          # **** MODIFIED JQ COMMAND (More Robust Check) ****
-          # Check if resolved_path_results exists and is an array before iterating
-          INSTANCES=$(echo "$API_RESPONSE" | jq -e -r '
-            .req_path_results[0] |
-            if (.resolved_path_results | type == "array") then
-              .resolved_path_results[]?.resolved_path // empty
-            else
-              empty
-            end
-          ')
+          # **** MODIFIED JQ COMMAND ****
+          # Use // [] to provide an empty array if resolved_path_results is missing or null
+          INSTANCES=$(echo "$API_RESPONSE" | jq -e -r '(.req_path_results[0].resolved_path_results // [])[]?.resolved_path // empty' || true)
           JQ_EXIT_CODE=$?
 
           echo "Parsed Instances (if any): [$INSTANCES]"
           echo "JQ Exit Code: $JQ_EXIT_CODE"
 
-          # JQ_EXIT_CODE 0 means success (found instances or correctly handled empty/null array),
-          # 1 means null/false output (no instances found after check), >1 means syntax error
           if [ $JQ_EXIT_CODE -gt 1 ]; then
              echo "::error::jq failed to parse API response. JQ exit code: $JQ_EXIT_CODE."
              ERROR_MSG=$(echo "$API_RESPONSE" | jq -r '.err_msg // "Unknown jq parsing error"')
              echo "::error::$ERROR_MSG"
              exit 1
-          # JQ exit code 1 means the 'if' condition resulted in 'empty', meaning no instances
-          elif [ $JQ_EXIT_CODE -eq 1 ] || [ -z "$INSTANCES" ]; then
-             echo "No existing LXC instances found to uninstall. Skipping deletion."
+          fi
+
+          if [ -z "$INSTANCES" ]; then
+            echo "No existing LXC instances found to uninstall (or API returned no results). Skipping deletion."
           else
             echo "Found instances to delete:"
             echo "$INSTANCES"
@@ -234,5 +226,5 @@ jobs:
           fi
 
           echo "--- Installation triggered. Waiting for container to start... ---"
-          sleep 5
+          sleep 5 
 
