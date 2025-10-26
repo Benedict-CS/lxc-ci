@@ -12,219 +12,96 @@ env:
   DEVICE_ID: "test-1"
 
 jobs:
-  #====================================================
-  # CI Job: Build and Push Docker Image
-  #====================================================
   CI-Pipeline:
-    name: 1. CI-Pipeline
+    name: 1. Build & Push Image
     runs-on: ubuntu-latest
     outputs:
       IMAGE_URL: ${{ steps.meta.outputs.IMAGE_URL }}
       VERSION: ${{ steps.meta.outputs.VERSION }}
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Generate Image Metadata
-        id: meta
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - id: meta
         run: |
           VERSION=$(date +%Y%m%d)-$(git rev-parse --short HEAD)
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "IMAGE_URL=${{ env.REGISTRY_DOMAIN }}/${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
-          echo "Generated Tag: $VERSION"
-
-      - name: Build and Push Image
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
-          provenance: false # Added for compatibility/simplicity if needed
+          provenance: false
 
-  #====================================================
-  # CD Job: Deploy to Device via USP Controller
-  #====================================================
   CD-Pipeline:
-    name: 2. CD-Pipeline
-    needs: CI-Pipeline # Depends on CI Job
+    name: 2. Deploy (Recreate)
+    needs: CI-Pipeline
     runs-on: ubuntu-latest
-
     steps:
-      - name: 1. Get Authentication Token and Set Env Var
+      - name: Get Auth Token
         id: auth
         run: |
           set -o pipefail
-          echo "Attempting to retrieve token using HTTPS and domain name..."
-
           TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
             --header 'Content-Type: application/json' \
-            --verbose \
-            --fail \
-            --connect-timeout 10 \
-            --max-time 30 \
-            --data-raw '{
-                "email": "test@gmail.com",
-                "password": "test"
-            }' | tee /dev/stderr | tr -d '"')
-
-          CURL_EXIT_CODE=$?
-          echo "Raw curl output processed. Exit code: $CURL_EXIT_CODE"
-
-          if [ $CURL_EXIT_CODE -ne 0 ]; then
-            echo "::error::curl command failed with exit code $CURL_EXIT_CODE. Check API connectivity or curl output above."
-            exit 1
-          fi
-
-          if [ -z "$TEMP_TOKEN" ]; then
-            echo "::error::Failed to retrieve authentication token (Token is empty). Check API response."
-            exit 1
-          fi
-
-          echo "Successfully retrieved auth token (masked)."
+            --fail --silent --connect-timeout 10 --max-time 30 \
+            --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
+          if [ -z "$TEMP_TOKEN" ]; then echo "::error::Auth token is empty."; exit 1; fi
           echo "::add-mask::$TEMP_TOKEN"
-          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV # Write to GITHUB_ENV
+          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
 
-      - name: 2. Uninstall All Existing Containers
+      - name: Uninstall Existing Containers
         id: uninstall
         run: |
-          echo "--- Finding existing LXC instances on device: ${{ env.DEVICE_ID }} ---"
-
-          API_RESPONSE=$(curl --location \
-            --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/get' \
-            --header 'Content-Type: application/json' \
-            --header "Authorization: ${TOKEN}" \
-            --fail-with-body \
-            --connect-timeout 10 \
-            --max-time 30 \
-            --data-raw '{
-                "param_paths": ["Device.LCM.LXC."],
-                "max_depth": 1
-            }')
+          API_RESPONSE=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/get' \
+            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+            --fail-with-body --connect-timeout 10 --max-time 30 \
+            --data-raw '{"param_paths": ["Device.LCM.LXC."], "max_depth": 1}')
           CURL_EXIT_CODE=$?
-
-          echo "API Response:"
-          echo "$API_RESPONSE"
-          echo "Curl Exit Code: $CURL_EXIT_CODE"
-
           if [ $CURL_EXIT_CODE -ne 0 ] && [ $CURL_EXIT_CODE -ne 22 ]; then
-            echo "::error::Failed to get instances from API. Curl exit code: $CURL_EXIT_CODE."
+            echo "::error::Failed to get instances. Curl exit code: $CURL_EXIT_CODE. Response: $API_RESPONSE"
             exit 1
           fi
-
-          # **** MODIFIED JQ COMMAND ****
-          # Use // [] to provide an empty array if resolved_path_results is missing or null
-          INSTANCES=$(echo "$API_RESPONSE" | jq -e -r '(.req_path_results[0].resolved_path_results // [])[]?.resolved_path // empty' || true)
-          JQ_EXIT_CODE=$?
-
-          echo "Parsed Instances (if any): [$INSTANCES]"
-          echo "JQ Exit Code: $JQ_EXIT_CODE"
-
-          if [ $JQ_EXIT_CODE -gt 1 ]; then
-             echo "::error::jq failed to parse API response. JQ exit code: $JQ_EXIT_CODE."
-             ERROR_MSG=$(echo "$API_RESPONSE" | jq -r '.err_msg // "Unknown jq parsing error"')
-             echo "::error::$ERROR_MSG"
-             exit 1
-          fi
-
-          if [ -z "$INSTANCES" ]; then
-            echo "No existing LXC instances found to uninstall (or API returned no results). Skipping deletion."
-          else
-            echo "Found instances to delete:"
-            echo "$INSTANCES"
-
+          INSTANCES=$(echo "$API_RESPONSE" | jq -r '(.req_path_results[0].resolved_path_results // [])[]?.resolved_path // empty' || true)
+          if [ -n "$INSTANCES" ]; then
             echo "$INSTANCES" | while IFS= read -r path; do
               [ -z "$path" ] && continue
-              echo "--- Deleting instance: $path ---"
-              curl --location \
-                --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/del' \
-                --header 'Content-Type: application/json' \
-                --header "Authorization: ${TOKEN}" \
-                --fail-with-body \
-                --connect-timeout 10 \
-                --max-time 30 \
-                --data-raw "{
-                    \"allow_partial\": true,
-                    \"obj_paths\": [\"$path\"]
-                }"
-              DEL_EXIT_CODE=$?
-                if [ $DEL_EXIT_CODE -ne 0 ]; then
-                  echo "::warning::Failed to delete instance '$path' (Exit code: $DEL_EXIT_CODE). Continuing..."
-                fi
+              curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/del' \
+                --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+                --fail --silent --connect-timeout 10 --max-time 30 \
+                --data-raw "{\"allow_partial\": true, \"obj_paths\": [\"$path\"]}"
               sleep 2
             done
           fi
-
-          echo "--- Uninstall phase complete. Waiting for device to process... ---"
           sleep 5
 
-      - name: 3. Install New Container
+      - name: Install New Container
         id: install
         run: |
-          echo "--- Sending Add command with param_settings to trigger new installation ---"
-
           IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
           ALIAS="ci-cd-${{ needs.CI-Pipeline.outputs.VERSION }}"
-
-          echo "Installing with ImageURL: $IMAGE_URL_WITH_PREFIX"
-          echo "Using Alias: $ALIAS"
-
           JSON_PAYLOAD=$(cat <<EOF
           {
-              "allow_partial": true,
-              "create_objs": [
-                  {
-                      "obj_path": "Device.LCM.LXC.",
-                      "param_settings": [
-                          {
-                              "param": "Alias",
-                              "value": "$ALIAS",
-                              "required": true
-                          },
-                          {
-                              "param": "ImageURL",
-                              "value": "$IMAGE_URL_WITH_PREFIX",
-                              "required": true
-                          }
-                      ]
-                  }
+            "allow_partial": true,
+            "create_objs": [{
+              "obj_path": "Device.LCM.LXC.",
+              "param_settings": [
+                {"param": "Alias", "value": "$ALIAS", "required": true},
+                {"param": "ImageURL", "value": "$IMAGE_URL_WITH_PREFIX", "required": true}
               ]
+            }]
           }
           EOF
           )
-
-          echo "Sending Payload:"
-          echo "$JSON_PAYLOAD"
-
-          RESPONSE=$(curl --location \
-            --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/add' \
-            --header 'Content-Type: application/json' \
-            --header "Authorization: ${TOKEN}" \
-            --fail \
+          RESPONSE=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/add' \
+            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+            --fail --silent --connect-timeout 10 --max-time 60 \
             --data-raw "$JSON_PAYLOAD")
-
           CURL_EXIT_CODE=$?
-          echo "Device response: $RESPONSE"
-
-          if [ $CURL_EXIT_CODE -ne 0 ]; then
-            echo "::error::Add command failed. Curl exit code: $CURL_EXIT_CODE."
+          if [ $CURL_EXIT_CODE -ne 0 ] || [[ "$RESPONSE" != *"OperSuccess"* ]]; then
+            echo "::error::Install failed. Exit code: $CURL_EXIT_CODE. Response: $RESPONSE"
             exit 1
           fi
-
-          if [[ "$RESPONSE" == *"OperSuccess"* ]]; then
-            echo "Successfully triggered installation."
-          else
-            echo "::error::Failed to trigger installation! Response did not contain OperSuccess: $RESPONSE"
-            exit 1
-          fi
-
-          echo "--- Installation triggered. Waiting for container to start... ---"
-          sleep 5 
-
+          sleep 5
