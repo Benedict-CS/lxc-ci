@@ -226,5 +226,5 @@ jobs:
           fi
 
           echo "--- Installation triggered. Waiting for container to start... ---"
-          sleep 5
+          sleep 5 
 
