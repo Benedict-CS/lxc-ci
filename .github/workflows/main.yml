@@ -20,8 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       IMAGE_URL: ${{ steps.meta.outputs.IMAGE_URL }}
-      # MODIFIED: 修正了 output 名稱 (之前是 IMAGE_TAG，但 meta 步驟是輸出 VERSION)
-      VERSION: ${{ steps.meta.outputs.VERSION }}
+      VERSION: ${{ steps.meta.outputs.VERSION }} # Corrected output name
 
     steps:
       - name: Checkout Code
@@ -32,7 +31,7 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        
+
       - name: Generate Image Metadata
         id: meta
         run: |
@@ -47,23 +46,22 @@ jobs:
           context: .
           platforms: linux/arm64
           push: true
-          # 這裡使用 steps.meta.outputs.VERSION 是正確的
           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
-          provenance: false
+          provenance: false # Added for compatibility/simplicity if needed
 
   #====================================================
   # CD Job: Deploy to Device via USP Controller
   #====================================================
   CD-Pipeline:
     name: 2. CD-Pipeline
-    needs: CI-Pipeline # 依賴 CI Job
+    needs: CI-Pipeline # Depends on CI Job
     runs-on: ubuntu-latest
 
     steps:
       - name: 1. Get Authentication Token and Set Env Var
         id: auth
         run: |
-          set -o pipefail 
+          set -o pipefail
           echo "Attempting to retrieve token using HTTPS and domain name..."
 
           TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
@@ -73,7 +71,7 @@ jobs:
             --connect-timeout 10 \
             --max-time 30 \
             --data-raw '{
-                "email": "test@gmail.com", 
+                "email": "test@gmail.com",
                 "password": "test"
             }' | tee /dev/stderr | tr -d '"')
 
@@ -92,14 +90,13 @@ jobs:
 
           echo "Successfully retrieved auth token (masked)."
           echo "::add-mask::$TEMP_TOKEN"
-          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV # 寫入 GITHUB_ENV
+          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV # Write to GITHUB_ENV
 
       - name: 2. Uninstall All Existing Containers
         id: uninstall
         run: |
           echo "--- Finding existing LXC instances on device: ${{ env.DEVICE_ID }} ---"
 
-          # Get response from API, show body on failure
           API_RESPONSE=$(curl --location \
             --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/get' \
             --header 'Content-Type: application/json' \
@@ -114,45 +111,37 @@ jobs:
           CURL_EXIT_CODE=$?
 
           echo "API Response:"
-          echo "$API_RESPONSE" # Log the full response for debugging
+          echo "$API_RESPONSE"
           echo "Curl Exit Code: $CURL_EXIT_CODE"
 
-          # Check curl exit code (ignore 22 for 404/Not Found)
           if [ $CURL_EXIT_CODE -ne 0 ] && [ $CURL_EXIT_CODE -ne 22 ]; then
             echo "::error::Failed to get instances from API. Curl exit code: $CURL_EXIT_CODE."
             exit 1
           fi
 
-          # If curl succeeded (or returned 404), try parsing with jq
-          # Use 'jq -e' to set exit code if path is null or not found
-          # Add '?' for safe navigation and '// empty' to handle null gracefully
-          INSTANCES=$(echo "$API_RESPONSE" | jq -e -r '.req_path_results[0].resolved_path_results[]?.resolved_path // empty')
+          # **** MODIFIED JQ COMMAND ****
+          # Use // [] to provide an empty array if resolved_path_results is missing or null
+          INSTANCES=$(echo "$API_RESPONSE" | jq -e -r '(.req_path_results[0].resolved_path_results // [])[]?.resolved_path // empty')
           JQ_EXIT_CODE=$?
 
-          echo "Parsed Instances (if any): [$INSTANCES]" # Add brackets for clarity if empty
+          echo "Parsed Instances (if any): [$INSTANCES]"
           echo "JQ Exit Code: $JQ_EXIT_CODE"
 
-          # JQ_EXIT_CODE 0 means success, 1 means null/false result (no instances), >1 means error
           if [ $JQ_EXIT_CODE -gt 1 ]; then
              echo "::error::jq failed to parse API response. JQ exit code: $JQ_EXIT_CODE."
-             # Try extracting a potential error message from the response
              ERROR_MSG=$(echo "$API_RESPONSE" | jq -r '.err_msg // "Unknown jq parsing error"')
              echo "::error::$ERROR_MSG"
              exit 1
           fi
 
-          # Use '-n' with test to correctly handle multi-line INSTANCES
           if [ -z "$INSTANCES" ]; then
             echo "No existing LXC instances found to uninstall (or API returned no results). Skipping deletion."
           else
             echo "Found instances to delete:"
             echo "$INSTANCES"
-            
-            # Use 'while read' loop to handle paths correctly, even if they contain spaces
+
             echo "$INSTANCES" | while IFS= read -r path; do
-              # Skip empty lines that might result from jq processing
-              [ -z "$path" ] && continue 
-              
+              [ -z "$path" ] && continue
               echo "--- Deleting instance: $path ---"
               curl --location \
                 --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/del' \
@@ -176,22 +165,17 @@ jobs:
           echo "--- Uninstall phase complete. Waiting for device to process... ---"
           sleep 5
 
-      # ===================================================================
-      # MODIFIED: 這是你需要的修正
-      # ===================================================================
       - name: 3. Install New Container
         id: install
         run: |
           echo "--- Sending Add command with param_settings to trigger new installation ---"
-          
-          # 從 CI Job 獲取 ImageURL 和 Version
+
           IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
           ALIAS="ci-cd-${{ needs.CI-Pipeline.outputs.VERSION }}"
-          
+
           echo "Installing with ImageURL: $IMAGE_URL_WITH_PREFIX"
           echo "Using Alias: $ALIAS"
 
-          # 使用 cat <<EOF 來建立乾淨的 JSON payload
           JSON_PAYLOAD=$(cat <<EOF
           {
               "allow_partial": true,
@@ -215,16 +199,16 @@ jobs:
           }
           EOF
           )
-          
+
           echo "Sending Payload:"
           echo "$JSON_PAYLOAD"
-          
+
           RESPONSE=$(curl --location \
             --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/add' \
             --header 'Content-Type: application/json' \
             --header "Authorization: ${TOKEN}" \
             --fail \
-            --data-raw "$JSON_PAYLOAD") # 將 JSON 變數傳入
+            --data-raw "$JSON_PAYLOAD")
 
           CURL_EXIT_CODE=$?
           echo "Device response: $RESPONSE"
@@ -243,3 +227,4 @@ jobs:
 
           echo "--- Installation triggered. Waiting for container to start... ---"
           sleep 5
+
