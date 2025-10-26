@@ -99,43 +99,75 @@ jobs:
         run: |
           echo "--- Finding existing LXC instances on device: ${{ env.DEVICE_ID }} ---"
 
-          INSTANCES=$(curl --location \
+          # Get response from API, show body on failure
+          API_RESPONSE=$(curl --location \
             --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/get' \
             --header 'Content-Type: application/json' \
             --header "Authorization: ${TOKEN}" \
-            --silent \
-            --fail \
+            --fail-with-body \
+            --connect-timeout 10 \
+            --max-time 30 \
             --data-raw '{
                 "param_paths": ["Device.LCM.LXC."],
                 "max_depth": 1
-            }' | jq -r '.req_path_results[0].resolved_path_results[].resolved_path')
-          
+            }')
           CURL_EXIT_CODE=$?
-          if [ $CURL_EXIT_CODE -ne 0 ] && [ $CURL_EXIT_CODE -ne 22 ]; then # 忽略 404 (找不到) 錯誤
-            echo "::error::Failed to get instances. Curl exit code: $CURL_EXIT_CODE."
+
+          echo "API Response:"
+          echo "$API_RESPONSE" # Log the full response for debugging
+          echo "Curl Exit Code: $CURL_EXIT_CODE"
+
+          # Check curl exit code (ignore 22 for 404/Not Found)
+          if [ $CURL_EXIT_CODE -ne 0 ] && [ $CURL_EXIT_CODE -ne 22 ]; then
+            echo "::error::Failed to get instances from API. Curl exit code: $CURL_EXIT_CODE."
             exit 1
           fi
 
+          # If curl succeeded (or returned 404), try parsing with jq
+          # Use 'jq -e' to set exit code if path is null or not found
+          # Add '?' for safe navigation and '// empty' to handle null gracefully
+          INSTANCES=$(echo "$API_RESPONSE" | jq -e -r '.req_path_results[0].resolved_path_results[]?.resolved_path // empty')
+          JQ_EXIT_CODE=$?
+
+          echo "Parsed Instances (if any): [$INSTANCES]" # Add brackets for clarity if empty
+          echo "JQ Exit Code: $JQ_EXIT_CODE"
+
+          # JQ_EXIT_CODE 0 means success, 1 means null/false result (no instances), >1 means error
+          if [ $JQ_EXIT_CODE -gt 1 ]; then
+             echo "::error::jq failed to parse API response. JQ exit code: $JQ_EXIT_CODE."
+             # Try extracting a potential error message from the response
+             ERROR_MSG=$(echo "$API_RESPONSE" | jq -r '.err_msg // "Unknown jq parsing error"')
+             echo "::error::$ERROR_MSG"
+             exit 1
+          fi
+
+          # Use '-n' with test to correctly handle multi-line INSTANCES
           if [ -z "$INSTANCES" ]; then
-            echo "No existing LXC instances found to uninstall. Skipping."
+            echo "No existing LXC instances found to uninstall (or API returned no results). Skipping deletion."
           else
             echo "Found instances to delete:"
             echo "$INSTANCES"
-
-            for path in $INSTANCES; do
+            
+            # Use 'while read' loop to handle paths correctly, even if they contain spaces
+            echo "$INSTANCES" | while IFS= read -r path; do
+              # Skip empty lines that might result from jq processing
+              [ -z "$path" ] && continue 
+              
               echo "--- Deleting instance: $path ---"
               curl --location \
                 --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/del' \
                 --header 'Content-Type: application/json' \
                 --header "Authorization: ${TOKEN}" \
-                --fail \
+                --fail-with-body \
+                --connect-timeout 10 \
+                --max-time 30 \
                 --data-raw "{
                     \"allow_partial\": true,
                     \"obj_paths\": [\"$path\"]
                 }"
               DEL_EXIT_CODE=$?
                 if [ $DEL_EXIT_CODE -ne 0 ]; then
-                  echo "::warning::Failed to delete instance $path (Exit code: $DEL_EXIT_CODE). Continuing..."
+                  echo "::warning::Failed to delete instance '$path' (Exit code: $DEL_EXIT_CODE). Continuing..."
                 fi
               sleep 2
             done
