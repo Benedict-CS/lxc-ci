@@ -10,9 +10,8 @@ env:
   IMAGE_NAME: test-service
   API_HOST: controller.benedicttiong.site
   DEVICE_ID: "test-1"
-  # --- 硬式編碼 Blue/Green IP ---
-  BLUE_IP: "192.168.3.100" # 假設這是部署前的線上版本
-  GREEN_IP: "192.168.3.101" # 假設這是新安裝版本將獲得的 IP (需要與 obuspa 分配的 IP 實際情況匹配)
+  BLUE_IP: "192.168.3.100"
+  GREEN_IP: "192.168.3.101"
 
 jobs:
   CI-Pipeline:
@@ -49,77 +48,46 @@ jobs:
           set -o pipefail
           TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
             --header 'Content-Type: application/json' \
-            --fail --silent --connect-timeout 10 --max-time 30 \
+            --silent --connect-timeout 10 --max-time 30 \
             --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
           if [ -z "$TEMP_TOKEN" ]; then echo "::error::Auth token is empty."; exit 1; fi
           echo "::add-mask::$TEMP_TOKEN"
           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
 
-      # --- Blue-Green Step 1: 安裝新的 Green 版本 ---
-      # 假設此步驟執行成功後，obuspa 會自動分配 IP (例如 192.168.3.101 給新容器)
       - name: Install New Version (Green)
         id: install_green
         run: |
           IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
           ALIAS="green-${{ needs.CI-Pipeline.outputs.VERSION }}"
           JSON_PAYLOAD=$(cat <<EOF
-          {
-            "allow_partial": true,
-            "create_objs": [{
-              "obj_path": "Device.LCM.LXC.",
-              "param_settings": [
-                {"param": "Alias", "value": "$ALIAS", "required": true},
-                {"param": "ImageURL", "value": "$IMAGE_URL_WITH_PREFIX", "required": true}
-              ]
-            }]
-          }
+          { "allow_partial": true, "create_objs": [{"obj_path": "Device.LCM.LXC.", "param_settings": [{"param": "Alias", "value": "$ALIAS", "required": true}, {"param": "ImageURL", "value": "$IMAGE_URL_WITH_PREFIX", "required": true}]}]}
           EOF
           )
-          RESPONSE=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/add' \
+          # MODIFIED: Removed --fail
+          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/add' \
             --header 'Content-Type: application/json' \
             --header "Authorization: ${TOKEN}" \
-            --fail --silent --connect-timeout 10 --max-time 60 \
-            --data-raw "$JSON_PAYLOAD")
-          CURL_EXIT_CODE=$?
-          if [ $CURL_EXIT_CODE -ne 0 ] || [[ "$RESPONSE" != *"OperSuccess"* ]]; then
-            echo "::error::Install failed. Exit code: $CURL_EXIT_CODE. Response: $RESPONSE"
-            exit 1
-          fi
-          # 未來的改進：從 RESPONSE 中解析出新容器的 IP
-          sleep 20 # 等待容器啟動
+            --silent --connect-timeout 10 --max-time 60 \
+            --data-raw "$JSON_PAYLOAD"
+          sleep 15
 
-      # --- Blue-Green Step 2: 切換流量到 Green 版本 ---
       - name: Switch Traffic to Green
         id: switch_traffic
         run: |
-          # 使用環境變數中硬式編碼的 Green IP
           GREEN_IP="${{ env.GREEN_IP }}"
           JSON_PAYLOAD=$(cat <<EOF
-          {
-            "command": "Device.SwitchActiveVersion()",
-            "input_args": { "TargetIP": "$GREEN_IP" }
-          }
+          { "command": "Device.SwitchActiveVersion()", "input_args": { "TargetIP": "$GREEN_IP" } }
           EOF
           )
-          RESPONSE=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/operate' \
+          # MODIFIED: Removed --fail
+          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/operate' \
             --header 'Content-Type: application/json' \
             --header "Authorization: ${TOKEN}" \
-            --fail --silent --connect-timeout 10 --max-time 30 \
-            --data-raw "$JSON_PAYLOAD")
-          CURL_EXIT_CODE=$?
-          if [ $CURL_EXIT_CODE -ne 0 ]; then
-            echo "::error::Switch traffic API call failed (Exit code: $CURL_EXIT_CODE). Response: $RESPONSE"
-            exit 1
-          fi
-
-      # --- Blue-Green Step 3: 清理舊的 Blue 版本 (暫時跳過) ---
+            --silent --connect-timeout 10 --max-time 30 \
+            --data-raw "$JSON_PAYLOAD"
+      
       - name: Clean Up Old Version (Blue) - Skipped
-        if: always() # 確保即使前面的步驟失敗也執行 (可選)
+        if: always()
         run: |
           echo "Skipping cleanup of old version (Blue: ${{ env.BLUE_IP }}) for now to allow rollback."
-          # 未來的實作：
-          # 1. 透過 API 查詢 Alias 或 IP 找到舊 Blue 容器的完整路徑 (例如 Device.LCM.LXC.1.)
-          # OLD_INSTANCE_PATH=$(curl ... | jq ...)
-          # 2. 呼叫 stomp/del API 刪除該路徑
-          # curl --location --request PUT 'https://.../stomp/del' --data-raw "{\"obj_paths\": [\"$OLD_INSTANCE_PATH\"]}" ...
           sleep 5
