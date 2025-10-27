@@ -96,7 +96,7 @@ jobs:
           JSON_PAYLOAD=$(cat <<EOF
           {
             "command": "Device.DeploymentManager.SwitchActiveVersion()",
-            "input_args": { "TargetIP": "$GREEN_IP" }
+            "input_args": { "target_ip": "$GREEN_IP" }
           }
           EOF
           )
