@@ -76,7 +76,7 @@ jobs:
         run: |
           GREEN_IP="${{ env.GREEN_IP }}"
           JSON_PAYLOAD=$(cat <<EOF
-          { "command": "Device.SwitchActiveVersion()", "input_args": { "target_ip": "$GREEN_IP" } }
+          { "command": "Device.DeploymentManager.SwitchActiveVersion()", "input_args": { "target_ip": "$GREEN_IP" } }
           EOF
           )
           # MODIFIED: Removed --fail
