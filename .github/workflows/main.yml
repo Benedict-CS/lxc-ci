@@ -55,6 +55,29 @@ jobs:
           echo "::add-mask::$TEMP_TOKEN"
           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
 
+      # --- 新增的驗證步驟 ---
+      - name: Test with Echo API
+        id: test_echo
+        run: |
+          echo "--- Testing connectivity with Echo() command ---"
+          JSON_PAYLOAD=$(cat <<EOF
+          {
+            "command": "Device.DeploymentManager.Echo()"
+          }
+          EOF
+          )
+          RESPONSE=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/operate' \
+            --header 'Content-Type: application/json' \
+            --header "Authorization: ${TOKEN}" \
+            --fail --silent --connect-timeout 10 --max-time 30 \
+            --data-raw "$JSON_PAYLOAD")
+          CURL_EXIT_CODE=$?
+          if [ $CURL_EXIT_CODE -ne 0 ]; then
+            echo "::error::Echo API call failed (Exit code: $CURL_EXIT_CODE). Response: $RESPONSE"
+            exit 1
+          fi
+          echo "Echo API call successful."
+
       # --- Blue-Green Step 1: 安裝新的 Green 版本 ---
       - name: Install New Version (Green)
         id: install_green
@@ -84,14 +107,12 @@ jobs:
             echo "::error::Install failed. Exit code: $CURL_EXIT_CODE. Response: $RESPONSE"
             exit 1
           fi
-          # 未來的改進：從 RESPONSE 中解析出新容器的 IP
-          sleep 20 # 等待容器啟動
+          sleep 20
 
       # --- Blue-Green Step 2: 切換流量到 Green 版本 ---
       - name: Switch Traffic to Green
         id: switch_traffic
         run: |
-          # 暫時使用硬式編碼的 Green IP
           GREEN_IP="${{ env.GREEN_IP }}"
           JSON_PAYLOAD=$(cat <<EOF
           {
@@ -113,12 +134,7 @@ jobs:
 
       # --- Blue-Green Step 3: 清理舊的 Blue 版本 (暫時跳過) ---
       - name: Clean Up Old Version (Blue)
-        if: always() # 確保即使前面的步驟失敗也執行 (可選)
+        if: always()
         run: |
           echo "Skipping cleanup of old version (Blue: ${{ env.BLUE_IP }}) for now to allow rollback."
-          # 未來的實作：
-          # 1. 透過 API 查詢 Alias 或 IP 找到舊 Blue 容器的完整路徑 (例如 Device.LCM.LXC.1.)
-          # OLD_INSTANCE_PATH=$(curl ... | jq ...)
-          # 2. 呼叫 stomp/del API 刪除該路徑
-          # curl --location --request PUT 'https://.../stomp/del' --data-raw "{\"obj_paths\": [\"$OLD_INSTANCE_PATH\"]}" ...
           sleep 5
