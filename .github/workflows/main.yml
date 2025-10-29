@@ -94,7 +94,7 @@ jobs:
           RESPONSE=$(curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/operate' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
             --fail --silent --connect-timeout 10 --max-time 30 \
-            --data-raw "{\"command\": \"Device.SwitchActiveVersion()\", \"input_args\": { \"target_ip\": \"$GREEN_IP\" }}")
+            --data-raw "{\"command\": \"Device.DeploymentManager.SwitchActiveVersion()\", \"input_args\": { \"target_ip\": \"$GREEN_IP\" }}")
           CURL_EXIT_CODE=$?
           if [ $CURL_EXIT_CODE -ne 0 ]; then
             echo "::error::Switch traffic API call failed (Exit code: $CURL_EXIT_CODE). Response: $RESPONSE"
