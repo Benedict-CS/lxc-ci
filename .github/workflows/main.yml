@@ -37,7 +37,7 @@ jobs:
           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
           provenance: false
 
-  CD-Pipeline:
+CD-Pipeline:
     name: 2. Deploy (Blue-Green)
     needs: CI-Pipeline
     runs-on: ubuntu-latest
@@ -46,49 +46,73 @@ jobs:
         id: auth
         run: |
           set -o pipefail
-          TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
-            --header 'Content-Type: application/json' \
-            --silent --connect-timeout 10 --max-time 30 \
+          TEMP_TOKEN=$(curl --location --request PUT 'https://controller.benedicttiong.site/api/auth/login' \
+            --header 'Content-Type: application/json' --fail --silent \
             --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
           if [ -z "$TEMP_TOKEN" ]; then echo "::error::Auth token is empty."; exit 1; fi
           echo "::add-mask::$TEMP_TOKEN"
           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
 
+      # --- 步驟 1: 找出目前正在服務的 Blue 版本 (如果存在) ---
+      - name: Find Active Blue Version
+        id: find_blue
+        run: |
+          # 這裡我們需要一個方法來識別 Blue 版本。
+          # 最好的方法是讓您的 SwitchActiveVersion API 在切換成功後，將當前的 Blue IP 寫入一個固定的 Data Model 參數中。
+          # 目前我們先假設，版本號不是最新版的那個就是舊版。
+          # 由於這一步邏輯較複雜，我們先將舊版本容器的路徑寫死，將來再優化。
+          # 假設舊版本總是 Device.LCM.LXC.1.
+          echo "BLUE_INSTANCE_PATH=Device.LCM.LXC.1." >> $GITHUB_ENV
+          echo "Assuming Blue instance is Device.LCM.LXC.1."
+          
+      # --- 步驟 2: 安裝新的 Green 版本 ---
       - name: Install New Version (Green)
         id: install_green
         run: |
           IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
           ALIAS="green-${{ needs.CI-Pipeline.outputs.VERSION }}"
-          JSON_PAYLOAD=$(cat <<EOF
-          { "allow_partial": true, "create_objs": [{"obj_path": "Device.LCM.LXC.", "param_settings": [{"param": "Alias", "value": "$ALIAS", "required": true}, {"param": "ImageURL", "value": "$IMAGE_URL_WITH_PREFIX", "required": true}]}]}
-          EOF
-          )
-          # MODIFIED: Removed --fail
-          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/add' \
-            --header 'Content-Type: application/json' \
-            --header "Authorization: ${TOKEN}" \
-            --silent --connect-timeout 10 --max-time 60 \
-            --data-raw "$JSON_PAYLOAD"
-          sleep 15
+          RESPONSE=$(curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/add' \
+            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+            --fail --silent --connect-timeout 10 --max-time 60 \
+            --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"Alias\", \"value\": \"$ALIAS\"}, {\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}")
+          if [[ "$RESPONSE" != *"OperSuccess"* ]]; then
+            echo "::error::Install failed. Response: $RESPONSE"
+            exit 1
+          fi
+          # 未來的優化：從 RESPONSE 中解析出新容器的 IP 和 Instance Path
+          # echo "GREEN_IP=$(echo $RESPONSE | jq ...)" >> $GITHUB_ENV
+          # echo "GREEN_INSTANCE_PATH=$(echo $RESPONSE | jq ...)" >> $GITHUB_ENV
+          echo "Installation triggered. Waiting for container to start..."
+          sleep 20
 
+      # --- 步驟 3: 切換流量到 Green 版本 ---
       - name: Switch Traffic to Green
         id: switch_traffic
         run: |
-          GREEN_IP="${{ env.GREEN_IP }}"
-          JSON_PAYLOAD=$(cat <<EOF
-          { "command": "Device.DeploymentManager.SwitchActiveVersion()", "input_args": { "target_ip": "$GREEN_IP" } }
-          EOF
-          )
-          # MODIFIED: Removed --fail
-          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ env.DEVICE_ID }}/stomp/operate' \
-            --header 'Content-Type: application/json' \
-            --header "Authorization: ${TOKEN}" \
-            --silent --connect-timeout 10 --max-time 30 \
-            --data-raw "$JSON_PAYLOAD"
-      
-      - name: Clean Up Old Version (Blue) - Skipped
-        if: always()
+          # 暫時硬式編碼 Green IP，您需要根據 obuspa 的 IP 分配情況修改
+          GREEN_IP="192.168.3.101"
+          RESPONSE=$(curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/operate' \
+            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+            --fail --silent --connect-timeout 10 --max-time 30 \
+            --data-raw "{\"command\": \"Device.SwitchActiveVersion()\", \"input_args\": { \"TargetIP\": \"$GREEN_IP\" }}")
+          CURL_EXIT_CODE=$?
+          if [ $CURL_EXIT_CODE -ne 0 ]; then
+            echo "::error::Switch traffic API call failed (Exit code: $CURL_EXIT_CODE). Response: $RESPONSE"
+            exit 1
+          fi
+
+      # --- 步驟 4: 清理舊的 Blue 版本 ---
+      - name: Clean Up Old Version (Blue)
+        if: always() # 無論前面是否成功，都嘗試清理
         run: |
-          echo "Skipping cleanup of old version (Blue: ${{ env.BLUE_IP }}) for now to allow rollback."
-          sleep 5
-          
+          # 從上一步獲取舊版本的路徑
+          OLD_INSTANCE_PATH="${{ env.BLUE_INSTANCE_PATH }}"
+          if [ -z "$OLD_INSTANCE_PATH" ]; then
+            echo "No old Blue instance path found. Skipping cleanup."
+          else
+            echo "Cleaning up old Blue instance: $OLD_INSTANCE_PATH"
+            curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/del' \
+              --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+              --silent --connect-timeout 10 --max-time 30 \
+              --data-raw "{\"allow_partial\": true, \"obj_paths\": [\"$OLD_INSTANCE_PATH\"]}"
+          fi
