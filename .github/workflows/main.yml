@@ -37,7 +37,7 @@ jobs:
           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
           provenance: false
 
-CD-Pipeline:
+  CD-Pipeline:
     name: 2. Deploy (Blue-Green)
     needs: CI-Pipeline
     runs-on: ubuntu-latest
