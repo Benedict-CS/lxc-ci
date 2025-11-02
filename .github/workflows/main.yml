@@ -95,7 +95,7 @@ jobs:
           # 增加 timeout 時間 (max-time 60) 來等待 C code 同步執行完成
           RESPONSE=$(curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/operate' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-            --fail --silent --connect-timeout 20 --max-time 60 \
+            --show-error --silent --connect-timeout 20 --max-time 60 \
             --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}")
           
           echo "API Response: $RESPONSE"
@@ -144,18 +144,3 @@ jobs:
             exit 1
           fi
           echo "Traffic switched successfully."
-
-      # --- 步驟 5: 清理舊的 Blue 版本 ---
-      - name: Clean Up Old Version (Blue)
-        if: always() 
-        run: |
-          OLD_INSTANCE_PATH="${{ env.BLUE_INSTANCE_PATH }}"
-          if [ -z "$OLD_INSTANCE_PATH" ]; then
-            echo "No old Blue instance path found. Skipping cleanup."
-          else
-            echo "Cleaning up old Blue instance: $OLD_INSTANCE_PATH"
-            curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/del' \
-              --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-              --silent --connect-timeout 10 --max-time 30 \
-              --data-raw "{\"allow_partial\": true, \"obj_paths\": [\"$OLD_INSTANCE_PATH\"]}"
-          fi
