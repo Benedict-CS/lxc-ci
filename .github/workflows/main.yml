@@ -39,7 +39,7 @@ jobs:
 
   CD-Pipeline:
     name: 2. Deploy (Blue-Green)
-    needs: CI-Pipeline
+    # needs: CI-Pipeline
     runs-on: ubuntu-latest
     steps:
       - name: Get Auth Token
@@ -101,18 +101,3 @@ jobs:
             exit 1
           fi
 
-      # --- 步驟 4: 清理舊的 Blue 版本 ---
-      - name: Clean Up Old Version (Blue)
-        if: always() # 無論前面是否成功，都嘗試清理
-        run: |
-          # 從上一步獲取舊版本的路徑
-          OLD_INSTANCE_PATH="${{ env.BLUE_INSTANCE_PATH }}"
-          if [ -z "$OLD_INSTANCE_PATH" ]; then
-            echo "No old Blue instance path found. Skipping cleanup."
-          else
-            echo "Cleaning up old Blue instance: $OLD_INSTANCE_PATH"
-            curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/del' \
-              --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-              --silent --connect-timeout 10 --max-time 30 \
-              --data-raw "{\"allow_partial\": true, \"obj_paths\": [\"$OLD_INSTANCE_PATH\"]}"
-          fi
