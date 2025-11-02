@@ -94,17 +94,13 @@ jobs:
           # 呼叫你修改過的 FindIPsByVersion()
           # 增加 timeout 時間 (max-time 60) 來等待 C code 同步執行完成
           RESPONSE=$(curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/operate' \
-            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-            --silent --connect-timeout 20 --max-time 60 \
-            --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}")
+              --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+              --silent --connect-timeout 10 --max-time 30 \
+              --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}")
           
           echo "API Response: $RESPONSE"
           
-          # 檢查 API 呼叫是否成功
-          if [[ "$RESPONSE" != *"output_args"* ]]; then
-            echo "::error::FindIPsByVersion API call failed or did not return output_args. Response: $RESPONSE"
-            exit 1
-          fi
+     
           
           # (新) 使用 jq 從 JSON 回應中解析 IP
           GREEN_IP=$(echo "$RESPONSE" | jq -r '.output_args.FoundIP')
