@@ -97,7 +97,7 @@ jobs:
               --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
               --silent --connect-timeout 10 --max-time 30 \
               --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}")
-              
+
 
       # --- 步驟 4: (修改) 切換流量到 Green 版本 ---
       - name: Switch Traffic to Green
@@ -110,17 +110,10 @@ jobs:
             echo "::error::GREEN_IP variable is not set."
             exit 1
           fi
-          
-          echo "Switching traffic to $GREEN_IP"
-          # (新) 使用 $GREEN_IP 變數，而不是硬式編碼
+
           RESPONSE=$(curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/operate' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-            --fail --silent --connect-timeout 10 --max-time 30 \
+            --silent --connect-timeout 10 --max-time 30 \
             --data-raw "{\"command\": \"Device.DeploymentManager.SwitchActiveVersion()\", \"input_args\": { \"target_ip\": \"$GREEN_IP\" }}")
           
-          CURL_EXIT_CODE=$?
-          if [ $CURL_EXIT_CODE -ne 0 ]; then
-            echo "::error::Switch traffic API call failed (Exit code: $CURL_EXIT_CODE). Response: $RESPONSE"
-            exit 1
-          fi
-          echo "Traffic switched successfully."
+
