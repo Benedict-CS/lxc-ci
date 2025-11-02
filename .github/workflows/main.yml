@@ -97,23 +97,7 @@ jobs:
               --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
               --silent --connect-timeout 10 --max-time 30 \
               --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}")
-          
-          echo "API Response: $RESPONSE"
-          
-     
-          
-          # (新) 使用 jq 從 JSON 回應中解析 IP
-          GREEN_IP=$(echo "$RESPONSE" | jq -r '.output_args.FoundIP')
-          
-          if [ -z "$GREEN_IP" ] || [ "$GREEN_IP" == "null" ] || [[ "$GREEN_IP" == *"No "* ]]; then
-            echo "::error::Could not parse Green IP from response. IP: '$GREEN_IP'"
-            echo "Full response: $RESPONSE"
-            exit 1
-          fi
-          
-          echo "Found Green IP: $GREEN_IP"
-          # (新) 將 IP 存入環境變數，供下一步使用
-          echo "GREEN_IP=$GREEN_IP" >> $GITHUB_ENV
+              
 
       # --- 步驟 4: (修改) 切換流量到 Green 版本 ---
       - name: Switch Traffic to Green
