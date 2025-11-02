@@ -82,7 +82,7 @@ jobs:
           echo "Installation triggered. Waiting 30s for container to start..."
           # 這裡的 sleep 仍然是必要的，你需要等容器啟動並取得 IP
           # 你可以增加這個時間，如果 30 秒不夠
-          sleep 30
+          sleep 15
 
       # --- 步驟 3: (新) 獲取新 Green 版本的 IP ---
       - name: Find Green IP Address
@@ -95,7 +95,7 @@ jobs:
           # 增加 timeout 時間 (max-time 60) 來等待 C code 同步執行完成
           RESPONSE=$(curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/operate' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-            --show-error --silent --connect-timeout 20 --max-time 60 \
+            --silent --connect-timeout 20 --max-time 60 \
             --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}")
           
           echo "API Response: $RESPONSE"
