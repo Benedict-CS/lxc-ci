@@ -10,8 +10,6 @@ env:
   IMAGE_NAME: test-service
   API_HOST: controller.benedicttiong.site
   DEVICE_ID: "test-1"
-  BLUE_IP: "192.168.3.100"
-  GREEN_IP: "192.168.3.101"
 
 jobs:
   CI-Pipeline:
@@ -26,7 +24,7 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - id: meta
         run: |
-          VERSION=$(date +%Y%m%d)-$(git rev-parse --short HEAD)
+          VERSION=$(date +%Y%D)-$(git rev-parse --short HEAD)
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "IMAGE_URL=${{ env.REGISTRY_DOMAIN }}/${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
       - uses: docker/build-push-action@v5
@@ -45,75 +43,36 @@ jobs:
       - name: Get Auth Token
         id: auth
         run: |
-          set -o pipefail
           TEMP_TOKEN=$(curl --location --request PUT 'https://controller.benedicttiong.site/api/auth/login' \
             --header 'Content-Type: application/json' --fail --silent \
             --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
-          if [ -z "$TEMP_TOKEN" ]; then echo "::error::Auth token is empty."; exit 1; fi
           echo "::add-mask::$TEMP_TOKEN"
           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
 
-      # --- 步驟 1: 找出目前正在服務的 Blue 版本 (如果存在) ---
-      - name: Find Active Blue Version
-        id: find_blue
-        run: |
-          # (保持你目前的假設)
-          echo "BLUE_INSTANCE_PATH=Device.LCM.LXC.1." >> $GITHUB_ENV
-          echo "Assuming Blue instance is Device.LCM.LXC.1."
-          
-      # --- 步驟 2: 安裝新的 Green 版本 ---
       - name: Install New Version (Green)
         id: install_green
         run: |
           IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
           ALIAS="green-${{ needs.CI-Pipeline.outputs.VERSION }}"
           
-          echo "Triggering installation for $ALIAS..."
-          RESPONSE=$(curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/add' \
+          curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/add' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
             --fail --silent --connect-timeout 10 --max-time 60 \
-            --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"Alias\", \"value\": \"$ALIAS\"}, {\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}")
+            --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"Alias\", \"value\": \"$ALIAS\"}, {\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}"
           
-          if [[ "$RESPONSE" != *"OperSuccess"* ]]; then
-            echo "::error::Install failed. Response: $RESPONSE"
-            exit 1
-          fi
-          
-          echo "Installation triggered. Waiting 30s for container to start..."
-          # 這裡的 sleep 仍然是必要的，你需要等容器啟動並取得 IP
-          # 你可以增加這個時間，如果 30 秒不夠
-          sleep 15
-
-      # --- 步驟 3: (新) 獲取新 Green 版本的 IP ---
-      - name: Find Green IP Address
+      - name: Find Green IPs (Write to /tmp/test.txt)
         id: find_green_ip
         run: |
           VERSION_TAG="${{ needs.CI-Pipeline.outputs.VERSION }}"
-          echo "Finding IP for VersionTag: $VERSION_TAG"
-          
-          # 呼叫你修改過的 FindIPsByVersion()
-          # 增加 timeout 時間 (max-time 60) 來等待 C code 同步執行完成
-          RESPONSE=$(curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/operate' \
-              --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-              --silent --connect-timeout 10 --max-time 30 \
-              --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}")
-
-
-      # --- 步驟 4: (修改) 切換流量到 Green 版本 ---
-      - name: Switch Traffic to Green
-        id: switch_traffic
-        # (新) 讀取上一步存的環境變數
-        env:
-          GREEN_IP: ${{ env.GREEN_IP }}
-        run: |
-          if [ -z "$GREEN_IP" ]; then
-            echo "::error::GREEN_IP variable is not set."
-            exit 1
-          fi
-
-          RESPONSE=$(curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/operate' \
+          curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/operate' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
             --silent --connect-timeout 10 --max-time 30 \
-            --data-raw "{\"command\": \"Device.DeploymentManager.SwitchActiveVersion()\", \"input_args\": { \"target_ip\": \"$GREEN_IP\" }}")
-          
+            --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}"
 
+      - name: Switch Traffic (Trigger Load Balancer)
+        id: switch_traffic
+        run: |
+          curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/operate' \
+            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+            --silent --connect-timeout 10 --max-time 30 \
+            --data-raw "{\"command\": \"Device.DeploymentManager.SwitchActiveVersion()\", \"input_args\": {}}"
