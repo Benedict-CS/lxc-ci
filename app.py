@@ -1,7 +1,7 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import socket  # socket 模組是必要的
 
-VERSION = "1.0" # 你的 log 顯示版本是 1.0
+VERSION = "1.2" # 你的 log 顯示版本是 1.0
 HOST = '0.0.0.0'
 PORT = 8000
 
@@ -41,14 +41,7 @@ class SimpleWebServer(BaseHTTPRequestHandler):
         container_ip = get_container_ip()
 
         html_content = f"""
-<html>
-<head><title>Server Info</title></head>
-<body>
-    <h1>Container 資訊</h1>
-    <p>Version: {VERSION}</p>
-    <p>Container IP: {container_ip}</p>
-</body>
-</html>
+ Container IP: {container_ip}, Version: {VERSION} 
 """
         self.wfile.write(bytes(html_content, "utf-8"))
 
