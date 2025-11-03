@@ -1,7 +1,7 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import socket  # socket 模組是必要的
 
-VERSION = "1.2" # 你的 log 顯示版本是 1.0
+VERSION = "1.3" # 你的 log 顯示版本是 1.0
 HOST = '0.0.0.0'
 PORT = 8000
 
