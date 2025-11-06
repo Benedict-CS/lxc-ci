@@ -53,7 +53,8 @@ jobs:
         id: install_green
         run: |
           IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
-          ALIAS="green-${{ needs.CI-Pipeline.outputs.VERSION }}"
+          # ALIAS="green-${{ needs.CI-Pipeline.outputs.VERSION }}"
+          ALIAS=""
           
           curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/add' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
