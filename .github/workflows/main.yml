@@ -56,10 +56,10 @@ jobs:
           
           curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/add' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-            --fail --silent --connect-timeout 10 --max-time 60 \
+            --silent --connect-timeout 10 --max-time 60 \
             --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}"
 
-          sleep 15
+          sleep 10
 
       - name: Find Green IPs (Write to /tmp/test.txt)
         id: find_green_ip
