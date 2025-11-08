@@ -1,3 +1,3 @@
-FROM ymirwang/prplos:v2.33
+FROM dallastech25/prplos-registry-dallas:prpl_v4.0
 
 CMD ["/bin/sh"]
