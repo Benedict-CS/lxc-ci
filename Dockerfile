@@ -1,4 +1,4 @@
-FROM 14790897/openwrt:aarch64_generic
+FROM dickhub/openwrt:arm64
 
 RUN opkg update 
 
