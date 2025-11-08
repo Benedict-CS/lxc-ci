@@ -6,4 +6,4 @@ COPY app.py .
 
 EXPOSE 8000
 
-CMD ["/bin/ash"]
+CMD ["/sbin/init"]
