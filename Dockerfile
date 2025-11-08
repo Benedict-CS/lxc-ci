@@ -3,13 +3,19 @@
 FROM zzsrv/openwrt:aarch64
 
 # 2. 安裝套件：
-RUN mkdir -p /var/lock && \
+RUN \
+    # 建立 opkg 需要的 lock 目錄
+    mkdir -p /var/lock && \
+    \
+    # (重要！) 明確地建立你的工作目錄
+    mkdir -p /app && \
+    \
+    # 執行 opkg update 和 install
     opkg update && \
     opkg install python3-light python3-pip --no-check-certificate && \
-    # 修正：只清理 opkg 列表，避免刪除 /tmp/resolv.conf
+    \
+    # 清理 opkg 列表
     rm -rf /var/opkg-lists/*
-    
-    mkdir -p /app
 
 # 3. 複製您的應用程式
 WORKDIR /app
