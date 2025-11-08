@@ -1,4 +1,7 @@
-FROM python:3.11-alpine
+FROM openwrt/rootfs:latest
+
+RUN opkg update && \
+    opkg install python3-light python3-pip
 
 WORKDIR /app
 COPY app.py .
