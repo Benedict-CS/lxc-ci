@@ -1,4 +1,4 @@
-FROM albrechtloh/openwrt-docker:latest
+FROM openwrtorg/rootfs:latest
 
 RUN opkg update && \
     opkg install python3-light python3-pip
