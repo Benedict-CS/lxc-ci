@@ -1,4 +1,4 @@
-FROM openwrt/openwrt:23.05.3
+FROM openwrt/rootfs:armvirt-64-openwrt-23.05
 
 RUN opkg update && \
     opkg install python3-light python3-pip --no-check-certificate
