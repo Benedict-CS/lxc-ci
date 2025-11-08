@@ -1,6 +1,6 @@
 # 1. 基礎映像：
 #    使用 'zzsrv/openwrt:latest' (這個版本已證明 opkg 可以運作)
-FROM zzsrv/openwrt:latest
+FROM zzsrv/openwrt
 
 # 2. 安裝套件：
 RUN mkdir -p /var/lock && \
