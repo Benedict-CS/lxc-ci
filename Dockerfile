@@ -1,24 +1,15 @@
-# 1. 基礎映像 (錯誤標籤)
-# FROM openwrt/rootfs:armvirt-64-openwrt-23.05
-#
-# 1. 基礎映像 (正確標籤：使用 23.05.3 的 'v' 版本)
-FROM openwrt/rootfs:armvirt-64-v23.05.3
+# 1. 修正：使用官方、穩定、多架構的 "openwrt/openwrt" 倉庫
+#    (這將會正確拉取 linux/arm64 版本)
+FROM openwrt/openwrt:23.05.3
 
-# 2. RUN 指令 (和之前一樣，mkdir 仍然是必要的)
-RUN \
-    # 建立 opkg 需要的鎖定目錄
-    mkdir -p /var/lock && \
-    \
-    # 執行 opkg update (現在會指向 23.05.3 穩定版軟體源)
+# 2. 您的 RUN 指令已經是正確的
+#    (建立 lock 目錄、更新、安裝、清除)
+RUN mkdir -p /var/lock && \
     opkg update && \
-    \
-    # 安裝你需要的軟體
     opkg install python3-light python3-pip --no-check-certificate && \
-    \
-    # 最佳實踐：清除 opkg 快取和下載的列表，保持映像乾淨
     rm -rf /tmp/* /var/opkg-lists/*
 
-# 3. 剩下的部分都一樣
+# --- 以下不變 ---
 WORKDIR /app
 COPY app.py .
 
