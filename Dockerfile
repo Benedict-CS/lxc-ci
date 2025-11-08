@@ -1,7 +1,6 @@
 FROM zzsrv/openwrt:aarch64
 
-RUN \
-    mkdir -p /var/lock &&
+RUN mkdir -p /var/lock
 
 WORKDIR /app
 COPY app.py .
