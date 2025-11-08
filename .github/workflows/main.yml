@@ -9,7 +9,6 @@ env:
   REGISTRY_DOMAIN: registry.benedicttiong.site
   IMAGE_NAME: test-service
   API_HOST: controller.benedicttiong.site
-  # 移除 ENV 中的 DEVICE_ID，因為它現在是動態的
 
 jobs:
   CI-Pipeline:
@@ -35,20 +34,17 @@ jobs:
           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
           provenance: false
 
-  # --- 新增的 Job：用來獲取在線設備列表 ---
+  # --- Job 2: 獲取在線設備 (已修正) ---
   Get-Online-Devices:
     name: 2. Get Online Devices
     runs-on: ubuntu-latest
-    # 等待 CI 成功後再執行
     needs: [CI-Pipeline]
     outputs:
-      # 輸出一份 JSON 格式的設備列表給下一個 Job
       devices: ${{ steps.set-matrix.outputs.devices }}
     steps:
       - name: Get Auth Token
         id: auth
         run: |
-          # 獲取 Token (使用 API_HOST)
           TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
             --header 'Content-Type: application/json' --fail --silent \
             --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
@@ -58,39 +54,39 @@ jobs:
       - name: Fetch and Filter Online Devices
         id: set-matrix
         run: |
-          # 呼叫你提供的 IP API 來獲取設備列表
-          # 1. Curl 獲取 JSON
-          # 2. JQ 篩選: 找到 .devices 陣列, 選出 Status == 2 的項目, 並只抓取 .SN 欄位
-          # 3. JQ -c '[...]': 把所有 SN 重新打包成一個 JSON 陣列 (例如 ["test-1", "test-2"])
+          # 嘗試獲取設備列表。如果 curl 或 jq 失敗，DEVICE_LIST 會是空字串
           DEVICE_LIST=$(curl --location 'http://140.113.194.249/api/device' \
             --header 'Content-Type: application/json' \
-            --header "Authorization: $TOKEN" --silent --fail | \
+            --header "Authorization: $TOKEN" --silent --fail --connect-timeout 5 | \
             jq -c '[.devices[] | select(.Status == 2) | .SN]')
-            
+
+          # 【關鍵修正】
+          # 檢查 DEVICE_LIST 是否為空字串 (curl 失敗)
+          # 如果是，手動將其設為 "[]" (空 JSON 陣列)
+          if [ -z "$DEVICE_LIST" ]; then
+            echo "::warning::Could not fetch device list or no devices found. Setting matrix to empty array."
+            DEVICE_LIST="[]"
+          fi
+          
           echo "Found online devices: $DEVICE_LIST"
           echo "devices=$DEVICE_LIST" >> $GITHUB_OUTPUT
 
-  # --- 修改後的 Job：使用 matrix 動態部署 ---
+  # --- Job 3: CD-Pipeline (不變) ---
   CD-Pipeline:
-    # Job 名稱會動態顯示正在部署的設備
     name: 3. CD-Pipeline (Deploy to ${{ matrix.device }})
-    # 需要 CI 的 Image URL 和 Get-Online-Devices 的設備列表
     needs: [CI-Pipeline, Get-Online-Devices]
-    # 如果 Get-Online-Devices 輸出是空陣列 '[]'，則跳過此 Job
+    # 這裡的 if 條件現在可以正確處理 "[]"
     if: needs.Get-Online-Devices.outputs.devices != '[]'
     runs-on: ubuntu-latest
     strategy:
-      # 關鍵：使用 fromJson 讀取上一個 Job 的輸出
       matrix:
         device: ${{ fromJson(needs.Get-Online-Devices.outputs.devices) }}
-      # 關鍵：一台 AP 部署失敗時，不要取消其他 AP 的部署
       fail-fast: false 
 
     steps:
       - name: Get Auth Token
         id: auth
         run: |
-          # 每個 Job 都需要重新獲取 Token，因為 GITHUB_ENV 是 Job-scoped
           TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
             --header 'Content-Type: application/json' --fail --silent \
             --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
@@ -101,21 +97,16 @@ jobs:
         id: install_green
         run: |
           IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
-          
-          # 使用 ${{ matrix.device }} 取代寫死的 DEVICE_ID
           curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/add' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
             --silent --connect-timeout 10 --max-time 60 --fail \
             --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}"
-
           sleep 10
 
       - name: Find Green IPs on ${{ matrix.device }}
         id: find_green_ip
         run: |
           VERSION_TAG="${{ needs.CI-Pipeline.outputs.VERSION }}"
-          
-          # 使用 ${{ matrix.device }}
           curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
             --silent --connect-timeout 10 --max-time 30 --fail \
@@ -124,7 +115,6 @@ jobs:
       - name: Apply Canary Split on ${{ matrix.device }}
         id: set_canary
         run: |
-          # 使用 ${{ matrix.device }}
           curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
             --silent --connect-timeout 10 --max-time 30 --fail \
