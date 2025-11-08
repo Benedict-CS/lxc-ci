@@ -1,4 +1,4 @@
-FROM dickhub/openwrt:arm64
+FROM 14790897/openwrt:aarch64_generic
 
 RUN \
     # 建立 opkg 需要的 lock 目錄 (修復 opkg lock 錯誤)
