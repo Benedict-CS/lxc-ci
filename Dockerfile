@@ -1,21 +1,24 @@
-# 1. 基礎映像：
-#    使用官方 'openwrt/openwrt' 倉庫的多架構標籤。
-#    您的 buildx 指令會自動為 'linux/arm64' 平台拉取正確的版本。
-FROM openwrt/openwrt:23.05.3
+# 1. 基礎映像 (你這行是正確的)
+FROM openwrt/rootfs:armvirt-64-openwrt-23.05
 
-# 2. 安裝套件：
-#    - 立即建立 /var/lock 目錄以避免 opkg 鎖定錯誤。
-#    - 保留 --no-check-certificate 以增加網路下載的穩定性。
-RUN mkdir -p /var/lock && \
+# 2. 修改 RUN 指令
+RUN \
+    # 建立 opkg 需要的鎖定目錄
+    mkdir -p /var/lock && \
+    \
+    # 現在執行 opkg update 才會成功
     opkg update && \
-    opkg install python3-light python3-pip --no-check-certificate
+    \
+    # 安裝你需要的軟體
+    opkg install python3-light python3-pip --no-check-certificate && \
+    \
+    # 最佳實踐：清除 opkg 快取和下載的列表，保持映像乾淨
+    rm -rf /tmp/* /var/opkg-lists/*
 
-# 3. 複製您的應用程式
+# 3. 剩下的部分都一樣
 WORKDIR /app
 COPY app.py .
 
-# 4. 開放 Port
 EXPOSE 8000
 
-# 5. 啟動指令
 CMD ["python3", "/app/app.py"]
