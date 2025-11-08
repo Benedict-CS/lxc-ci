@@ -9,7 +9,7 @@ env:
   REGISTRY_DOMAIN: registry.benedicttiong.site
   IMAGE_NAME: test-service
   API_HOST: controller.benedicttiong.site
-  DEVICE_ID: "test-1"
+  DEVICE_ID: "test-2"
 
 jobs:
   CI-Pipeline:
