@@ -55,7 +55,7 @@ jobs:
         id: set-matrix
         run: |
           # 嘗試獲取設備列表。如果 curl 或 jq 失敗，DEVICE_LIST 會是空字串
-          DEVICE_LIST=$(curl --location 'http://140.113.194.249/api/device' \
+          DEVICE_LIST=$(curl --location 'https://${{ env.API_HOST }}/api/device' \
             --header 'Content-Type: application/json' \
             --header "Authorization: $TOKEN" --silent --fail --connect-timeout 5 | \
             jq -c '[.devices[] | select(.Status == 2) | .SN]')
