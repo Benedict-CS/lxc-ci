@@ -1,15 +1,20 @@
 # 1. 基礎映像：
-#    使用 'zzsrv/openwrt:latest' (這個版本已證明 opkg 可以運作)
-FROM zzsrv/openwrt:aarch64
+FROM zzsrv/openwrt:latest
 
 # 2. 安裝套件：
 RUN mkdir -p /var/lock && \
     opkg update && \
     opkg install python3-light python3-pip --no-check-certificate && \
-    # 修正：只清理 opkg 列表，避免刪除 /tmp/resolv.conf
-    rm -rf /var/opkg-lists/*
+    rm -rf /var/opkg-lists/* && \
+    #
+    # --- 關鍵修正 ---
+    # 在這裡手動建立 /app 目錄，確保它一定存在
+    mkdir -p /app
+    # ------------------
+    #
 
 # 3. 複製您的應用程式
+#    (現在 WORKDIR 會使用上面剛建立好的 /app 目錄)
 WORKDIR /app
 COPY app.py .
 
