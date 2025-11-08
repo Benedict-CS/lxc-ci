@@ -1,6 +1,6 @@
 # 1. 基礎映像：
 #    使用 'openwrt/openwrt' 倉庫 (有 'linux/arm64' 版本)
-FROM zzsrv/openwrt:aarch64
+FROM zzsrv/openwrt:latest
 
 # 2. 安裝套件：
 #    - 建立 opkg 需要的 lock 目錄
