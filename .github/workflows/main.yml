@@ -70,10 +70,10 @@ jobs:
             --silent --connect-timeout 10 --max-time 30 \
             --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}"
 
-      - name: Switch Traffic (Trigger Load Balancer)
-        id: switch_traffic
+      - name: Apply Canary Split (Trigger iptables) 
+        id: set_canary
         run: |
           curl --location --request PUT 'https://controller.benedicttiong.site/api/device/${{ env.DEVICE_ID }}/stomp/operate' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
             --silent --connect-timeout 10 --max-time 30 \
-            --data-raw "{\"command\": \"Device.DeploymentManager.SwitchActiveVersion()\", \"input_args\": {}}"
+            --data-raw "{\"command\": \"Device.DeploymentManager.SetCanarySplit()\", \"input_args\": {}}"
