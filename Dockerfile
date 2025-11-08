@@ -9,7 +9,6 @@ RUN \
     opkg install python3-light python3-pip --no-check-certificate && \
     \
     rm -rf /var/opkg-lists/* && \
-    \
     (rm -rf /tmp/* || true)
 
 WORKDIR /app
