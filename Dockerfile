@@ -1,3 +1,3 @@
-FROM tumi/openwrt:aarch64_cortex-a53
+FROM ymirwang/prplos:v2.33
 
-CMD ["/bin/ash"]
+CMD ["/bin/sh"]
