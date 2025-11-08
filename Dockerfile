@@ -1,4 +1,3 @@
-FROM dickhub/openwrt:arm64
+FROM 14790897/openwrt:aarch64_generic
 
-
-CMD ["/bin/sh"]
+CMD ["/bin/ash"]
