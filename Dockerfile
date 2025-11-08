@@ -1,3 +1,3 @@
-FROM openwrt/rootfs:arm_cortex-a9_vfpv3-d16
+FROM tumi/openwrt:aarch64_cortex-a53
 
 CMD ["/bin/ash"]
