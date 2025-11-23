@@ -42,7 +42,7 @@ jobs:
           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
           provenance: false
 
-  # --- Job 2: 獲取設備列表 (支援 UI 輸入 + 檔案設定) ---
+# --- Job 2: 獲取設備列表 (支援 UI 輸入 + 檔案設定) ---
   Get-Target-Devices:
     name: 2. Get Target Devices
     runs-on: ubuntu-latest
@@ -112,3 +112,52 @@ jobs:
             echo "Found online devices: $DEVICE_LIST"
             echo "devices=$DEVICE_LIST" >> $GITHUB_OUTPUT
           fi
+
+  # --- Job 3: CD-Pipeline (保持不變，名稱可微調) ---
+  CD-Pipeline:
+    name: 3. CD-Pipeline (Deploy to ${{ matrix.device }})
+    needs: [CI-Pipeline, Get-Target-Devices] # 依賴改名後的 Job
+    if: needs.Get-Target-Devices.outputs.devices != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        device: ${{ fromJson(needs.Get-Target-Devices.outputs.devices) }}
+      fail-fast: false 
+
+    steps:
+      - name: Get Auth Token
+        id: auth
+        run: |
+          TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
+            --header 'Content-Type: application/json' --fail --silent \
+            --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
+          echo "::add-mask::$TEMP_TOKEN"
+          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
+
+      - name: Install New Version (Green) on ${{ matrix.device }}
+        id: install_green
+        run: |
+          IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
+          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/add' \
+            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+            --silent --connect-timeout 10 --max-time 60 \
+            --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}"
+          sleep 10
+
+      # (後續 Find Green IPs, Apply Canary Split 保持不變...)
+      - name: Find Green IPs on ${{ matrix.device }}
+        id: find_green_ip
+        run: |
+          VERSION_TAG="${{ needs.CI-Pipeline.outputs.VERSION }}"
+          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
+            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+            --silent --connect-timeout 10 --max-time 30  \
+            --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}"
+
+      - name: Apply Canary Split on ${{ matrix.device }}
+        id: set_canary
+        run: |
+          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
+            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+            --silent --connect-timeout 10 --max-time 30  \
+            --data-raw "{\"command\": \"Device.DeploymentManager.SetCanarySplit()\", \"input_args\": {}}"
