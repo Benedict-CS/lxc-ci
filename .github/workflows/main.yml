@@ -10,7 +10,7 @@ on:
       target_devices:
         description: 'Specify target devices (comma-separated, e.g., test-1,test-2). Leave empty for ALL online devices.'
         required: false
-        default: 'test-1'
+        default: ''
 
 env:
   REGISTRY_DOMAIN: registry.benedicttiong.site
@@ -42,7 +42,7 @@ jobs:
           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
           provenance: false
 
-  # --- Job 2: 獲取設備列表 (新增判斷邏輯) ---
+  # --- Job 2: 獲取設備列表 (支援 UI 輸入 + 檔案設定) ---
   Get-Target-Devices:
     name: 2. Get Target Devices
     runs-on: ubuntu-latest
@@ -50,11 +50,11 @@ jobs:
     outputs:
       devices: ${{ steps.determine-devices.outputs.devices }}
     steps:
-      # 步驟 2-1: 取得 Auth Token (只有在需要呼叫 API 時才真的需要，但先拿著無妨)
+      # 【重要】必須先 checkout 才能讀取 targets.txt
+      - uses: actions/checkout@v4
+
       - name: Get Auth Token
         id: auth
-        # 如果使用者有指定設備，其實不需要這個 Token，可以優化 skip，但為了簡單起見先保留
-        if: ${{ github.event.inputs.target_devices == '' }}
         run: |
           TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
             --header 'Content-Type: application/json' --fail --silent \
@@ -62,27 +62,43 @@ jobs:
           echo "::add-mask::$TEMP_TOKEN"
           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
 
-      # 步驟 2-2: 決定設備列表 (核心修改)
       - name: Determine Target Devices
         id: determine-devices
         run: |
-          # 1. 讀取使用者輸入
-          USER_INPUT="${{ github.event.inputs.target_devices }}"
+          # --- 1. 定義變數 ---
+          UI_INPUT="${{ github.event.inputs.target_devices }}"
+          FILE_INPUT=""
           
-          # 2. 判斷邏輯
-          if [ -n "$USER_INPUT" ]; then
-            echo "User specified devices: $USER_INPUT"
-            # 將逗號分隔字串 (test-1,test-2) 轉換為 JSON 陣列 (["test-1","test-2"])
-            # 使用 jq -R -s -c 'split(",") | map(select(length > 0))' 是一個穩健的方法
-            JSON_ARRAY=$(echo "$USER_INPUT" | jq -R -s -c 'split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length > 0))')
-            echo "Formatted JSON: $JSON_ARRAY"
+          # 嘗試讀取 targets.txt (如果檔案存在)
+          if [ -f "targets.txt" ]; then
+            FILE_INPUT=$(cat targets.txt | tr -d '\n' | tr -d ' ') # 去除換行和空白
+          fi
+
+          echo "UI Input: $UI_INPUT"
+          echo "File Input: $FILE_INPUT"
+
+          # --- 2. 決定最終目標 (優先級：UI > File > Default All) ---
+          FINAL_TARGETS=""
+
+          if [ -n "$UI_INPUT" ]; then
+            echo "Using Web UI input."
+            FINAL_TARGETS="$UI_INPUT"
+          elif [ -n "$FILE_INPUT" ]; then
+            echo "Using targets.txt config."
+            FINAL_TARGETS="$FILE_INPUT"
+          fi
+
+          # --- 3. 根據是否有目標來決定下一步 ---
+          if [ -n "$FINAL_TARGETS" ]; then
+            # A. 有指定目標 (不管是來自 UI 還是 File) -> 轉成 JSON 陣列
+            echo "Specific targets found: $FINAL_TARGETS"
+            JSON_ARRAY=$(echo "$FINAL_TARGETS" | jq -R -s -c 'split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length > 0))')
             echo "devices=$JSON_ARRAY" >> $GITHUB_OUTPUT
           
           else
-            echo "No specific devices provided. Fetching ALL online devices from API..."
+            # B. 完全沒指定 (UI 空 且 File 空) -> 呼叫 API 抓全部
+            echo "No targets specified in UI or file. Fetching ALL online devices..."
             
-            # 呼叫 API 獲取所有線上設備 (原邏輯)
-            # 注意：這裡依賴上一步驟設定的 TOKEN
             DEVICE_LIST=$(curl --location 'https://${{ env.API_HOST }}/api/device' \
               --header 'Content-Type: application/json' \
               --header "Authorization: $TOKEN" --silent --fail --connect-timeout 5 | \
@@ -96,52 +112,3 @@ jobs:
             echo "Found online devices: $DEVICE_LIST"
             echo "devices=$DEVICE_LIST" >> $GITHUB_OUTPUT
           fi
-
-  # --- Job 3: CD-Pipeline (保持不變，名稱可微調) ---
-  CD-Pipeline:
-    name: 3. CD-Pipeline (Deploy to ${{ matrix.device }})
-    needs: [CI-Pipeline, Get-Target-Devices] # 依賴改名後的 Job
-    if: needs.Get-Target-Devices.outputs.devices != '[]'
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        device: ${{ fromJson(needs.Get-Target-Devices.outputs.devices) }}
-      fail-fast: false 
-
-    steps:
-      - name: Get Auth Token
-        id: auth
-        run: |
-          TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
-            --header 'Content-Type: application/json' --fail --silent \
-            --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
-          echo "::add-mask::$TEMP_TOKEN"
-          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
-
-      - name: Install New Version (Green) on ${{ matrix.device }}
-        id: install_green
-        run: |
-          IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
-          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/add' \
-            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-            --silent --connect-timeout 10 --max-time 60 \
-            --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}"
-          sleep 10
-
-      # (後續 Find Green IPs, Apply Canary Split 保持不變...)
-      - name: Find Green IPs on ${{ matrix.device }}
-        id: find_green_ip
-        run: |
-          VERSION_TAG="${{ needs.CI-Pipeline.outputs.VERSION }}"
-          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
-            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-            --silent --connect-timeout 10 --max-time 30  \
-            --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}"
-
-      - name: Apply Canary Split on ${{ matrix.device }}
-        id: set_canary
-        run: |
-          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
-            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-            --silent --connect-timeout 10 --max-time 30  \
-            --data-raw "{\"command\": \"Device.DeploymentManager.SetCanarySplit()\", \"input_args\": {}}"
