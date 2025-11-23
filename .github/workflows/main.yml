@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+  # 新增：手動觸發，允許輸入指定設備
+  workflow_dispatch:
+    inputs:
+      target_devices:
+        description: 'Specify target devices (comma-separated, e.g., test-1,test-2). Leave empty for ALL online devices.'
+        required: false
+        default: ''
 
 env:
   REGISTRY_DOMAIN: registry.benedicttiong.site
@@ -11,6 +18,7 @@ env:
   API_HOST: controller.benedicttiong.site
 
 jobs:
+  # --- Job 1: CI-Pipeline (保持不變) ---
   CI-Pipeline:
     name: 1. CI-Pipeline
     runs-on: ubuntu-latest
@@ -34,16 +42,19 @@ jobs:
           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
           provenance: false
 
-  # --- Job 2: 獲取在線設備 (已修正) ---
-  Get-Online-Devices:
-    name: 2. Get Online Devices
+  # --- Job 2: 獲取設備列表 (新增判斷邏輯) ---
+  Get-Target-Devices:
+    name: 2. Get Target Devices
     runs-on: ubuntu-latest
     needs: [CI-Pipeline]
     outputs:
-      devices: ${{ steps.set-matrix.outputs.devices }}
+      devices: ${{ steps.determine-devices.outputs.devices }}
     steps:
+      # 步驟 2-1: 取得 Auth Token (只有在需要呼叫 API 時才真的需要，但先拿著無妨)
       - name: Get Auth Token
         id: auth
+        # 如果使用者有指定設備，其實不需要這個 Token，可以優化 skip，但為了簡單起見先保留
+        if: ${{ github.event.inputs.target_devices == '' }}
         run: |
           TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
             --header 'Content-Type: application/json' --fail --silent \
@@ -51,36 +62,50 @@ jobs:
           echo "::add-mask::$TEMP_TOKEN"
           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
 
-      - name: Fetch and Filter Online Devices
-        id: set-matrix
+      # 步驟 2-2: 決定設備列表 (核心修改)
+      - name: Determine Target Devices
+        id: determine-devices
         run: |
-          # 嘗試獲取設備列表。如果 curl 或 jq 失敗，DEVICE_LIST 會是空字串
-          DEVICE_LIST=$(curl --location 'https://${{ env.API_HOST }}/api/device' \
-            --header 'Content-Type: application/json' \
-            --header "Authorization: $TOKEN" --silent --fail --connect-timeout 5 | \
-            jq -c '[.devices[] | select(.Status == 2) | .SN]')
-
-          # 【關鍵修正】
-          # 檢查 DEVICE_LIST 是否為空字串 (curl 失敗)
-          # 如果是，手動將其設為 "[]" (空 JSON 陣列)
-          if [ -z "$DEVICE_LIST" ]; then
-            echo "::warning::Could not fetch device list or no devices found. Setting matrix to empty array."
-            DEVICE_LIST="[]"
-          fi
+          # 1. 讀取使用者輸入
+          USER_INPUT="${{ github.event.inputs.target_devices }}"
           
-          echo "Found online devices: $DEVICE_LIST"
-          echo "devices=$DEVICE_LIST" >> $GITHUB_OUTPUT
+          # 2. 判斷邏輯
+          if [ -n "$USER_INPUT" ]; then
+            echo "User specified devices: $USER_INPUT"
+            # 將逗號分隔字串 (test-1,test-2) 轉換為 JSON 陣列 (["test-1","test-2"])
+            # 使用 jq -R -s -c 'split(",") | map(select(length > 0))' 是一個穩健的方法
+            JSON_ARRAY=$(echo "$USER_INPUT" | jq -R -s -c 'split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length > 0))')
+            echo "Formatted JSON: $JSON_ARRAY"
+            echo "devices=$JSON_ARRAY" >> $GITHUB_OUTPUT
+          
+          else
+            echo "No specific devices provided. Fetching ALL online devices from API..."
+            
+            # 呼叫 API 獲取所有線上設備 (原邏輯)
+            # 注意：這裡依賴上一步驟設定的 TOKEN
+            DEVICE_LIST=$(curl --location 'https://${{ env.API_HOST }}/api/device' \
+              --header 'Content-Type: application/json' \
+              --header "Authorization: $TOKEN" --silent --fail --connect-timeout 5 | \
+              jq -c '[.devices[]? | select(.Status == 2)? | .SN] // []')
+            
+            if [ -z "$DEVICE_LIST" ] || [ "$DEVICE_LIST" == "[]" ]; then
+               echo "::warning::No online devices found via API."
+               DEVICE_LIST="[]"
+            fi
+            
+            echo "Found online devices: $DEVICE_LIST"
+            echo "devices=$DEVICE_LIST" >> $GITHUB_OUTPUT
+          fi
 
-  # --- Job 3: CD-Pipeline (不變) ---
+  # --- Job 3: CD-Pipeline (保持不變，名稱可微調) ---
   CD-Pipeline:
     name: 3. CD-Pipeline (Deploy to ${{ matrix.device }})
-    needs: [CI-Pipeline, Get-Online-Devices]
-    # 這裡的 if 條件現在可以正確處理 "[]"
-    if: needs.Get-Online-Devices.outputs.devices != '[]'
+    needs: [CI-Pipeline, Get-Target-Devices] # 依賴改名後的 Job
+    if: needs.Get-Target-Devices.outputs.devices != '[]'
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        device: ${{ fromJson(needs.Get-Online-Devices.outputs.devices) }}
+        device: ${{ fromJson(needs.Get-Target-Devices.outputs.devices) }}
       fail-fast: false 
 
     steps:
@@ -103,6 +128,7 @@ jobs:
             --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}"
           sleep 10
 
+      # (後續 Find Green IPs, Apply Canary Split 保持不變...)
       - name: Find Green IPs on ${{ matrix.device }}
         id: find_green_ip
         run: |
@@ -118,4 +144,4 @@ jobs:
           curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
             --silent --connect-timeout 10 --max-time 30  \
-            --data-raw "{\"command\": \"Device.DeploymentManager.SetCanarySplit()\", \"input_args\": {}}" 
+            --data-raw "{\"command\": \"Device.DeploymentManager.SetCanarySplit()\", \"input_args\": {}}"
