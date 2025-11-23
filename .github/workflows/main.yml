@@ -10,7 +10,7 @@ on:
       target_devices:
         description: 'Specify target devices (comma-separated, e.g., test-1,test-2). Leave empty for ALL online devices.'
         required: false
-        default: ''
+        default: 'test-1'
 
 env:
   REGISTRY_DOMAIN: registry.benedicttiong.site
