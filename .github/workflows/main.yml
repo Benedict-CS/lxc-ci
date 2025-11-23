@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       target_devices:
-        description: 'Specify target devices (comma-separated, e.g., test-1,test-2). Leave empty for ALL online devices.'
+        description: 'Target devices'
         required: false
         default: ''
 
