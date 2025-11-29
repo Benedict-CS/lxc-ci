@@ -1,4 +1,4 @@
-FROM registry.gitlab.com/prpl-foundation/prplos/prplos/lcm_tests/arm32v7_3_14_alpine:latest
+FROM registry.gitlab.com/prpl-foundation/prplos/prplos/prpl-nightly/lcm-test-x86-64:latest
 
 CMD ["/bin/sh"]
 
