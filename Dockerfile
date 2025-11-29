@@ -1,4 +1,4 @@
-FROM registry.gitlab.com/prpl-foundation/prplos/prplos/prplos-22.03/lcm-test-x86-64
+FROM registry.gitlab.com/prpl-foundation/prplos/prplos/prplos-22.03/lcm-test-ipq807x-generic-v2
 
 CMD ["/bin/sh"]
 
