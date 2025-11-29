@@ -1,4 +1,4 @@
-FROM registry.gitlab.com/prpl-foundation/prplos/prplos/prplos-22.03/testbed
+FROM registry.gitlab.com/prpl-foundation/prplos/prplos/prplos-next/builder-osp
 
 CMD ["/bin/sh"]
 
