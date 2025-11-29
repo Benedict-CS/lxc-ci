@@ -1,4 +1,4 @@
-FROM ymirwang/prplos:v2.33
+FROM prpl-foundation/prplos/prplos/alpine3.16-arm32v7
 
 CMD ["/bin/sh"]
 
