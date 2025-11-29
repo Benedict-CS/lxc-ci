@@ -1,4 +1,4 @@
-FROM prpl-foundation/prplos/prplos/alpine3.16-arm32v7
+FROM registry.gitlab.com/prpl-foundation/prplos/prplos/alpine3.16-arm32v7:latest
 
 CMD ["/bin/sh"]
 
