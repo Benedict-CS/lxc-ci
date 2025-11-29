@@ -1,4 +1,4 @@
-FROM registry.gitlab.com/prpl-foundation/prplos/prplos/prplos/lcmfdclientapp-cortexa53
+FROM registry.gitlab.com/prpl-foundation/prplos/prplos/prplos/lcmfdclientapp-x86-64
 
 CMD ["/bin/sh"]
 
