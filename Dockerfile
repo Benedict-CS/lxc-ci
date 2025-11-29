@@ -1,4 +1,4 @@
-FROM registry.gitlab.com/prpl-foundation/prplos/prplos/prplos-next/builder-osp
+FROM registry.gitlab.com/prpl-foundation/prplmesh/prplmesh/prplmesh-builder-ubuntu-jammy
 
 CMD ["/bin/sh"]
 
