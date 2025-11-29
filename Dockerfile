@@ -1,4 +1,4 @@
-FROM ymirwang/prplos:v1.93
+FROM ymirwang/prplos:v2.33
 
 CMD ["/bin/sh"]
 
