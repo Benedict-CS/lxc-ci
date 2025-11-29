@@ -1,4 +1,4 @@
-FROM registry.gitlab.com/prpl-foundation/prplos/prplos/prplos-22.03/lcm-test-x86-64:latest
+FROM registry.gitlab.com/prpl-foundation/prplos/prplos/prplos/lcmfdclientapp-cortexa53
 
 CMD ["/bin/sh"]
 
