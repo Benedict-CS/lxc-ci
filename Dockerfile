@@ -1,4 +1,4 @@
-FROM registry.gitlab.com/prpl-foundation/prplmesh/prplmesh/prplmesh-tests-runner
+FROM registry.gitlab.com/prpl-foundation/prplos/prplos/lcm_tests/amd64_3_14_alpine
 
 CMD ["/bin/sh"]
 
