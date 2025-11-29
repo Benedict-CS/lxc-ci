@@ -1,4 +1,4 @@
-FROM registry.gitlab.com/prpl-foundation/prplmesh/prplmesh/prplmesh-builder-ubuntu-jammy
+FROM registry.gitlab.com/prpl-foundation/prplmesh/prplmesh/prplmesh-tests-runner
 
 CMD ["/bin/sh"]
 
