@@ -1,4 +1,4 @@
-FROM registry.gitlab.com/prpl-foundation/prplos/prplos/prplos/sdk-qca_ipq95xx-generic
+FROM registry.gitlab.com/prpl-foundation/prplos/prplos/prplos-22.03/testbed
 
 CMD ["/bin/sh"]
 
