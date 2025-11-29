@@ -1,3 +1,3 @@
-FROM dallastech25/prplos-registry-dallas:prpl_v4.0
+FROM alpine:3.19
 
 CMD ["/bin/sh"]
