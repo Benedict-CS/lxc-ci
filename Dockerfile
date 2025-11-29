@@ -1,4 +1,4 @@
-FROM ubuntu:25.04
+FROM debian:unstable-20251117-slim
 
 CMD ["/bin/sh"]
 
