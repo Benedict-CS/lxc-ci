@@ -1,4 +1,4 @@
-FROM registry.gitlab.com/prpl-foundation/prplos/prplos/prpl-nightly/lcm-test-ipq807x-generic
+FROM ymirwang/prplos:v2.33 
 
 CMD ["/bin/sh"]
 
@@ -7,6 +7,5 @@ CMD ["/bin/sh"]
 # ubuntu:25.04
 # debian:unstable-20251117-slim
 # ymirwang/prplos:v2.33 
-# ymirwang/prplos:v1.93
 
 
