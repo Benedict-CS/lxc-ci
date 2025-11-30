@@ -1,4 +1,4 @@
-FROM alpine:3.19
+FROM ubuntu:25.04
                   
 CMD ["/bin/sh"]
 
