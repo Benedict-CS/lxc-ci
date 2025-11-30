@@ -1,4 +1,4 @@
-FROM ymirwang/prplos:v2.33
+FROM alpine:3.19
          
 CMD ["/bin/sh"]
 
