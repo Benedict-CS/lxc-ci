@@ -159,4 +159,4 @@ jobs:
           curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
             --silent --connect-timeout 10 --max-time 30  \
-            --data-raw "{\"command\": \"Device.DeploymentManager.SetCanarySplit()\", \"input_args\": {}}"
+            --data-raw "{\"command\": \"Device.Canary.SetCanarySplit()\", \"input_args\": {}}"
