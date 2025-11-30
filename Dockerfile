@@ -1,4 +1,4 @@
-FROM ubuntu:25.04
+FROM debian:12-slim
 
 CMD ["/bin/sh"]
 
