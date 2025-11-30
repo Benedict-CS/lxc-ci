@@ -142,22 +142,21 @@ jobs:
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
             --silent --connect-timeout 10 --max-time 60 \
             --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}"
-          # sleep 10
+          sleep 10
 
-      # # (後續 Find Green IPs, Apply Canary Split 保持不變...)
-      # - name: Find Green IPs on ${{ matrix.device }}
-      #   id: find_green_ip
-      #   run: |
-      #     VERSION_TAG="${{ needs.CI-Pipeline.outputs.VERSION }}"
-      #     curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
-      #       --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-      #       --silent --connect-timeout 10 --max-time 30  \
-      #       --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}"
+      - name: Find Green IPs on ${{ matrix.device }}
+        id: find_green_ip
+        run: |
+          VERSION_TAG="${{ needs.CI-Pipeline.outputs.VERSION }}"
+          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
+            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+            --silent --connect-timeout 10 --max-time 30  \
+            --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}"
 
-      # - name: Apply Canary Split on ${{ matrix.device }}
-      #   id: set_canary
-      #   run: |
-      #     curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
-      #       --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-      #       --silent --connect-timeout 10 --max-time 30  \
-      #       --data-raw "{\"command\": \"Device.DeploymentManager.SetCanarySplit()\", \"input_args\": {}}"
+      - name: Apply Canary Split on ${{ matrix.device }}
+        id: set_canary
+        run: |
+          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
+            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+            --silent --connect-timeout 10 --max-time 30  \
+            --data-raw "{\"command\": \"Device.DeploymentManager.SetCanarySplit()\", \"input_args\": {}}"
