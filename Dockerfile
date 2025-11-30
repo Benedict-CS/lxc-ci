@@ -1,4 +1,7 @@
-FROM ubuntu:25.04
+FROM alpine:3.19
+
+RUN apk update
+RUn apk add python3
 
 CMD ["/bin/sh"]
 
