@@ -42,121 +42,121 @@ jobs:
           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
           provenance: false
 
-# --- Job 2: 獲取設備列表 (支援 UI 輸入 + 檔案設定) ---
-  Get-Target-Devices:
-    name: 2. Get Target Devices
-    runs-on: ubuntu-latest
-    needs: [CI-Pipeline]
-    outputs:
-      devices: ${{ steps.determine-devices.outputs.devices }}
-    steps:
-      # 【重要】必須先 checkout 才能讀取 targets.txt
-      - uses: actions/checkout@v4
+# # --- Job 2: 獲取設備列表 (支援 UI 輸入 + 檔案設定) ---
+#   Get-Target-Devices:
+#     name: 2. Get Target Devices
+#     runs-on: ubuntu-latest
+#     needs: [CI-Pipeline]
+#     outputs:
+#       devices: ${{ steps.determine-devices.outputs.devices }}
+#     steps:
+#       # 【重要】必須先 checkout 才能讀取 targets.txt
+#       - uses: actions/checkout@v4
 
-      - name: Get Auth Token
-        id: auth
-        run: |
-          TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
-            --header 'Content-Type: application/json' --fail --silent \
-            --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
-          echo "::add-mask::$TEMP_TOKEN"
-          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
+#       - name: Get Auth Token
+#         id: auth
+#         run: |
+#           TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
+#             --header 'Content-Type: application/json' --fail --silent \
+#             --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
+#           echo "::add-mask::$TEMP_TOKEN"
+#           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
 
-      - name: Determine Target Devices
-        id: determine-devices
-        run: |
-          # --- 1. 定義變數 ---
-          UI_INPUT="${{ github.event.inputs.target_devices }}"
-          FILE_INPUT=""
+#       - name: Determine Target Devices
+#         id: determine-devices
+#         run: |
+#           # --- 1. 定義變數 ---
+#           UI_INPUT="${{ github.event.inputs.target_devices }}"
+#           FILE_INPUT=""
           
-          # 嘗試讀取 targets.txt (如果檔案存在)
-          if [ -f "targets.txt" ]; then
-            FILE_INPUT=$(cat targets.txt | tr -d '\n' | tr -d ' ') # 去除換行和空白
-          fi
+#           # 嘗試讀取 targets.txt (如果檔案存在)
+#           if [ -f "targets.txt" ]; then
+#             FILE_INPUT=$(cat targets.txt | tr -d '\n' | tr -d ' ') # 去除換行和空白
+#           fi
 
-          echo "UI Input: $UI_INPUT"
-          echo "File Input: $FILE_INPUT"
+#           echo "UI Input: $UI_INPUT"
+#           echo "File Input: $FILE_INPUT"
 
-          # --- 2. 決定最終目標 (優先級：UI > File > Default All) ---
-          FINAL_TARGETS=""
+#           # --- 2. 決定最終目標 (優先級：UI > File > Default All) ---
+#           FINAL_TARGETS=""
 
-          if [ -n "$UI_INPUT" ]; then
-            echo "Using Web UI input."
-            FINAL_TARGETS="$UI_INPUT"
-          elif [ -n "$FILE_INPUT" ]; then
-            echo "Using targets.txt config."
-            FINAL_TARGETS="$FILE_INPUT"
-          fi
+#           if [ -n "$UI_INPUT" ]; then
+#             echo "Using Web UI input."
+#             FINAL_TARGETS="$UI_INPUT"
+#           elif [ -n "$FILE_INPUT" ]; then
+#             echo "Using targets.txt config."
+#             FINAL_TARGETS="$FILE_INPUT"
+#           fi
 
-          # --- 3. 根據是否有目標來決定下一步 ---
-          if [ -n "$FINAL_TARGETS" ]; then
-            # A. 有指定目標 (不管是來自 UI 還是 File) -> 轉成 JSON 陣列
-            echo "Specific targets found: $FINAL_TARGETS"
-            JSON_ARRAY=$(echo "$FINAL_TARGETS" | jq -R -s -c 'split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length > 0))')
-            echo "devices=$JSON_ARRAY" >> $GITHUB_OUTPUT
+#           # --- 3. 根據是否有目標來決定下一步 ---
+#           if [ -n "$FINAL_TARGETS" ]; then
+#             # A. 有指定目標 (不管是來自 UI 還是 File) -> 轉成 JSON 陣列
+#             echo "Specific targets found: $FINAL_TARGETS"
+#             JSON_ARRAY=$(echo "$FINAL_TARGETS" | jq -R -s -c 'split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length > 0))')
+#             echo "devices=$JSON_ARRAY" >> $GITHUB_OUTPUT
           
-          else
-            # B. 完全沒指定 (UI 空 且 File 空) -> 呼叫 API 抓全部
-            echo "No targets specified in UI or file. Fetching ALL online devices..."
+#           else
+#             # B. 完全沒指定 (UI 空 且 File 空) -> 呼叫 API 抓全部
+#             echo "No targets specified in UI or file. Fetching ALL online devices..."
             
-            DEVICE_LIST=$(curl --location 'https://${{ env.API_HOST }}/api/device' \
-              --header 'Content-Type: application/json' \
-              --header "Authorization: $TOKEN" --silent --fail --connect-timeout 5 | \
-              jq -c '[.devices[]? | select(.Status == 2)? | .SN] // []')
+#             DEVICE_LIST=$(curl --location 'https://${{ env.API_HOST }}/api/device' \
+#               --header 'Content-Type: application/json' \
+#               --header "Authorization: $TOKEN" --silent --fail --connect-timeout 5 | \
+#               jq -c '[.devices[]? | select(.Status == 2)? | .SN] // []')
             
-            if [ -z "$DEVICE_LIST" ] || [ "$DEVICE_LIST" == "[]" ]; then
-               echo "::warning::No online devices found via API."
-               DEVICE_LIST="[]"
-            fi
+#             if [ -z "$DEVICE_LIST" ] || [ "$DEVICE_LIST" == "[]" ]; then
+#                echo "::warning::No online devices found via API."
+#                DEVICE_LIST="[]"
+#             fi
             
-            echo "Found online devices: $DEVICE_LIST"
-            echo "devices=$DEVICE_LIST" >> $GITHUB_OUTPUT
-          fi
+#             echo "Found online devices: $DEVICE_LIST"
+#             echo "devices=$DEVICE_LIST" >> $GITHUB_OUTPUT
+#           fi
 
-  # --- Job 3: CD-Pipeline (保持不變，名稱可微調) ---
-  CD-Pipeline:
-    name: 3. CD-Pipeline (Deploy to ${{ matrix.device }})
-    needs: [CI-Pipeline, Get-Target-Devices] # 依賴改名後的 Job
-    if: needs.Get-Target-Devices.outputs.devices != '[]'
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        device: ${{ fromJson(needs.Get-Target-Devices.outputs.devices) }}
-      fail-fast: false 
+#   # --- Job 3: CD-Pipeline (保持不變，名稱可微調) ---
+#   CD-Pipeline:
+#     name: 3. CD-Pipeline (Deploy to ${{ matrix.device }})
+#     needs: [CI-Pipeline, Get-Target-Devices] # 依賴改名後的 Job
+#     if: needs.Get-Target-Devices.outputs.devices != '[]'
+#     runs-on: ubuntu-latest
+#     strategy:
+#       matrix:
+#         device: ${{ fromJson(needs.Get-Target-Devices.outputs.devices) }}
+#       fail-fast: false 
 
-    steps:
-      - name: Get Auth Token
-        id: auth
-        run: |
-          TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
-            --header 'Content-Type: application/json' --fail --silent \
-            --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
-          echo "::add-mask::$TEMP_TOKEN"
-          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
+#     steps:
+#       - name: Get Auth Token
+#         id: auth
+#         run: |
+#           TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
+#             --header 'Content-Type: application/json' --fail --silent \
+#             --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
+#           echo "::add-mask::$TEMP_TOKEN"
+#           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
 
-      - name: Install New Version (Green) on ${{ matrix.device }}
-        id: install_green
-        run: |
-          IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
-          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/add' \
-            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-            --silent --connect-timeout 10 --max-time 60 \
-            --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}"
-          sleep 10
+#       - name: Install New Version (Green) on ${{ matrix.device }}
+#         id: install_green
+#         run: |
+#           IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
+#           curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/add' \
+#             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+#             --silent --connect-timeout 10 --max-time 60 \
+#             --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}"
+      #     sleep 10
 
-      - name: Find Green IPs on ${{ matrix.device }}
-        id: find_green_ip
-        run: |
-          VERSION_TAG="${{ needs.CI-Pipeline.outputs.VERSION }}"
-          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
-            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-            --silent --connect-timeout 10 --max-time 30  \
-            --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}"
+      # - name: Find Green IPs on ${{ matrix.device }}
+      #   id: find_green_ip
+      #   run: |
+      #     VERSION_TAG="${{ needs.CI-Pipeline.outputs.VERSION }}"
+      #     curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
+      #       --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+      #       --silent --connect-timeout 10 --max-time 30  \
+      #       --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}"
 
-      - name: Apply Canary Split on ${{ matrix.device }}
-        id: set_canary
-        run: |
-          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
-            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-            --silent --connect-timeout 10 --max-time 30  \
-            --data-raw "{\"command\": \"Device.DeploymentManager.SetCanarySplit()\", \"input_args\": {}}"
+      # - name: Apply Canary Split on ${{ matrix.device }}
+      #   id: set_canary
+      #   run: |
+      #     curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
+      #       --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+      #       --silent --connect-timeout 10 --max-time 30  \
+      #       --data-raw "{\"command\": \"Device.DeploymentManager.SetCanarySplit()\", \"input_args\": {}}"
