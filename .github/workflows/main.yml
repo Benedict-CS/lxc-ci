@@ -17,7 +17,7 @@ env:
   IMAGE_NAME: test-service
   API_HOST: controller.benedicttiong.site
 
-# jobs:
+jobs:
 #   # --- Job 1: CI-Pipeline (保持不變) ---
 #   CI-Pipeline:
 #     name: 1. CI-Pipeline
