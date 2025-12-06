@@ -18,29 +18,29 @@ env:
   API_HOST: controller.benedicttiong.site
 
 jobs:
-#   # --- Job 1: CI-Pipeline (保持不變) ---
-#   CI-Pipeline:
-#     name: 1. CI-Pipeline
-#     runs-on: ubuntu-latest
-#     outputs:
-#       IMAGE_URL: ${{ steps.meta.outputs.IMAGE_URL }}
-#       VERSION: ${{ steps.meta.outputs.VERSION }}
-#     steps:
-#       - uses: actions/checkout@v4
-#       - uses: docker/setup-qemu-action@v3
-#       - uses: docker/setup-buildx-action@v3
-#       - id: meta
-#         run: |
-#           VERSION=$(date +%Y%m%d)-$(git rev-parse --short HEAD)
-#           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-#           echo "IMAGE_URL=${{ env.REGISTRY_DOMAIN }}/${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
-#       - uses: docker/build-push-action@v5
-#         with:
-#           context: .
-#           platforms: linux/arm64
-#           push: true
-#           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
-#           provenance: false
+  # --- Job 1: CI-Pipeline (保持不變) ---
+  CI-Pipeline:
+    name: 1. CI-Pipeline
+    runs-on: ubuntu-latest
+    outputs:
+      IMAGE_URL: ${{ steps.meta.outputs.IMAGE_URL }}
+      VERSION: ${{ steps.meta.outputs.VERSION }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - id: meta
+        run: |
+          VERSION=$(date +%Y%m%d)-$(git rev-parse --short HEAD)
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "IMAGE_URL=${{ env.REGISTRY_DOMAIN }}/${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
+          provenance: false
 
 # --- Job 2: 獲取設備列表 (支援 UI 輸入 + 檔案設定) ---
   Get-Target-Devices:
@@ -113,35 +113,35 @@ jobs:
             echo "devices=$DEVICE_LIST" >> $GITHUB_OUTPUT
           fi
 
-#   # --- Job 3: CD-Pipeline (保持不變，名稱可微調) ---
-#   CD-Pipeline:
-#     name: 3. CD-Pipeline (Deploy to ${{ matrix.device }})
-#     needs: [CI-Pipeline, Get-Target-Devices] # 依賴改名後的 Job
-#     if: needs.Get-Target-Devices.outputs.devices != '[]'
-#     runs-on: ubuntu-latest
-#     strategy:
-#       matrix:
-#         device: ${{ fromJson(needs.Get-Target-Devices.outputs.devices) }}
-#       fail-fast: false 
+  # --- Job 3: CD-Pipeline (保持不變，名稱可微調) ---
+  CD-Pipeline:
+    name: 3. CD-Pipeline (Deploy to ${{ matrix.device }})
+    needs: [CI-Pipeline, Get-Target-Devices] # 依賴改名後的 Job
+    if: needs.Get-Target-Devices.outputs.devices != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        device: ${{ fromJson(needs.Get-Target-Devices.outputs.devices) }}
+      fail-fast: false 
 
-#     steps:
-#       - name: Get Auth Token
-#         id: auth
-#         run: |
-#           TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
-#             --header 'Content-Type: application/json' --fail --silent \
-#             --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
-#           echo "::add-mask::$TEMP_TOKEN"
-#           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
+    steps:
+      - name: Get Auth Token
+        id: auth
+        run: |
+          TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
+            --header 'Content-Type: application/json' --fail --silent \
+            --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
+          echo "::add-mask::$TEMP_TOKEN"
+          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
 
-#       - name: Install New Version (Green) on ${{ matrix.device }}
-#         id: install_green
-#         run: |
-#           IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
-#           curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/add' \
-#             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-#             --silent --connect-timeout 10 --max-time 60 \
-#             --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}"
+      - name: Install New Version (Green) on ${{ matrix.device }}
+        id: install_green
+        run: |
+          IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
+          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/add' \
+            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+            --silent --connect-timeout 10 --max-time 60 \
+            --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}"
       #     sleep 10
 
       # - name: Find Green IPs on ${{ matrix.device }}
