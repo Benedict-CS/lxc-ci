@@ -17,101 +17,101 @@ env:
   IMAGE_NAME: test-service
   API_HOST: controller.benedicttiong.site
 
-jobs:
-  # --- Job 1: CI-Pipeline (保持不變) ---
-  CI-Pipeline:
-    name: 1. CI-Pipeline
-    runs-on: ubuntu-latest
-    outputs:
-      IMAGE_URL: ${{ steps.meta.outputs.IMAGE_URL }}
-      VERSION: ${{ steps.meta.outputs.VERSION }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - id: meta
-        run: |
-          VERSION=$(date +%Y%m%d)-$(git rev-parse --short HEAD)
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "IMAGE_URL=${{ env.REGISTRY_DOMAIN }}/${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
-      - uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
-          provenance: false
-
-# # --- Job 2: 獲取設備列表 (支援 UI 輸入 + 檔案設定) ---
-#   Get-Target-Devices:
-#     name: 2. Get Target Devices
+# jobs:
+#   # --- Job 1: CI-Pipeline (保持不變) ---
+#   CI-Pipeline:
+#     name: 1. CI-Pipeline
 #     runs-on: ubuntu-latest
-#     needs: [CI-Pipeline]
 #     outputs:
-#       devices: ${{ steps.determine-devices.outputs.devices }}
+#       IMAGE_URL: ${{ steps.meta.outputs.IMAGE_URL }}
+#       VERSION: ${{ steps.meta.outputs.VERSION }}
 #     steps:
-#       # 【重要】必須先 checkout 才能讀取 targets.txt
 #       - uses: actions/checkout@v4
-
-#       - name: Get Auth Token
-#         id: auth
+#       - uses: docker/setup-qemu-action@v3
+#       - uses: docker/setup-buildx-action@v3
+#       - id: meta
 #         run: |
-#           TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
-#             --header 'Content-Type: application/json' --fail --silent \
-#             --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
-#           echo "::add-mask::$TEMP_TOKEN"
-#           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
+#           VERSION=$(date +%Y%m%d)-$(git rev-parse --short HEAD)
+#           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+#           echo "IMAGE_URL=${{ env.REGISTRY_DOMAIN }}/${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
+#       - uses: docker/build-push-action@v5
+#         with:
+#           context: .
+#           platforms: linux/arm64
+#           push: true
+#           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
+#           provenance: false
 
-#       - name: Determine Target Devices
-#         id: determine-devices
-#         run: |
-#           # --- 1. 定義變數 ---
-#           UI_INPUT="${{ github.event.inputs.target_devices }}"
-#           FILE_INPUT=""
+# --- Job 2: 獲取設備列表 (支援 UI 輸入 + 檔案設定) ---
+  Get-Target-Devices:
+    name: 2. Get Target Devices
+    runs-on: ubuntu-latest
+    needs: [CI-Pipeline]
+    outputs:
+      devices: ${{ steps.determine-devices.outputs.devices }}
+    steps:
+      # 【重要】必須先 checkout 才能讀取 targets.txt
+      - uses: actions/checkout@v4
+
+      - name: Get Auth Token
+        id: auth
+        run: |
+          TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
+            --header 'Content-Type: application/json' --fail --silent \
+            --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
+          echo "::add-mask::$TEMP_TOKEN"
+          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
+
+      - name: Determine Target Devices
+        id: determine-devices
+        run: |
+          # --- 1. 定義變數 ---
+          UI_INPUT="${{ github.event.inputs.target_devices }}"
+          FILE_INPUT=""
           
-#           # 嘗試讀取 targets.txt (如果檔案存在)
-#           if [ -f "targets.txt" ]; then
-#             FILE_INPUT=$(cat targets.txt | tr -d '\n' | tr -d ' ') # 去除換行和空白
-#           fi
+          # 嘗試讀取 targets.txt (如果檔案存在)
+          if [ -f "targets.txt" ]; then
+            FILE_INPUT=$(cat targets.txt | tr -d '\n' | tr -d ' ') # 去除換行和空白
+          fi
 
-#           echo "UI Input: $UI_INPUT"
-#           echo "File Input: $FILE_INPUT"
+          echo "UI Input: $UI_INPUT"
+          echo "File Input: $FILE_INPUT"
 
-#           # --- 2. 決定最終目標 (優先級：UI > File > Default All) ---
-#           FINAL_TARGETS=""
+          # --- 2. 決定最終目標 (優先級：UI > File > Default All) ---
+          FINAL_TARGETS=""
 
-#           if [ -n "$UI_INPUT" ]; then
-#             echo "Using Web UI input."
-#             FINAL_TARGETS="$UI_INPUT"
-#           elif [ -n "$FILE_INPUT" ]; then
-#             echo "Using targets.txt config."
-#             FINAL_TARGETS="$FILE_INPUT"
-#           fi
+          if [ -n "$UI_INPUT" ]; then
+            echo "Using Web UI input."
+            FINAL_TARGETS="$UI_INPUT"
+          elif [ -n "$FILE_INPUT" ]; then
+            echo "Using targets.txt config."
+            FINAL_TARGETS="$FILE_INPUT"
+          fi
 
-#           # --- 3. 根據是否有目標來決定下一步 ---
-#           if [ -n "$FINAL_TARGETS" ]; then
-#             # A. 有指定目標 (不管是來自 UI 還是 File) -> 轉成 JSON 陣列
-#             echo "Specific targets found: $FINAL_TARGETS"
-#             JSON_ARRAY=$(echo "$FINAL_TARGETS" | jq -R -s -c 'split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length > 0))')
-#             echo "devices=$JSON_ARRAY" >> $GITHUB_OUTPUT
+          # --- 3. 根據是否有目標來決定下一步 ---
+          if [ -n "$FINAL_TARGETS" ]; then
+            # A. 有指定目標 (不管是來自 UI 還是 File) -> 轉成 JSON 陣列
+            echo "Specific targets found: $FINAL_TARGETS"
+            JSON_ARRAY=$(echo "$FINAL_TARGETS" | jq -R -s -c 'split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length > 0))')
+            echo "devices=$JSON_ARRAY" >> $GITHUB_OUTPUT
           
-#           else
-#             # B. 完全沒指定 (UI 空 且 File 空) -> 呼叫 API 抓全部
-#             echo "No targets specified in UI or file. Fetching ALL online devices..."
+          else
+            # B. 完全沒指定 (UI 空 且 File 空) -> 呼叫 API 抓全部
+            echo "No targets specified in UI or file. Fetching ALL online devices..."
             
-#             DEVICE_LIST=$(curl --location 'https://${{ env.API_HOST }}/api/device' \
-#               --header 'Content-Type: application/json' \
-#               --header "Authorization: $TOKEN" --silent --fail --connect-timeout 5 | \
-#               jq -c '[.devices[]? | select(.Status == 2)? | .SN] // []')
+            DEVICE_LIST=$(curl --location 'https://${{ env.API_HOST }}/api/device' \
+              --header 'Content-Type: application/json' \
+              --header "Authorization: $TOKEN" --silent --fail --connect-timeout 5 | \
+              jq -c '[.devices[]? | select(.Status == 2)? | .SN] // []')
             
-#             if [ -z "$DEVICE_LIST" ] || [ "$DEVICE_LIST" == "[]" ]; then
-#                echo "::warning::No online devices found via API."
-#                DEVICE_LIST="[]"
-#             fi
+            if [ -z "$DEVICE_LIST" ] || [ "$DEVICE_LIST" == "[]" ]; then
+               echo "::warning::No online devices found via API."
+               DEVICE_LIST="[]"
+            fi
             
-#             echo "Found online devices: $DEVICE_LIST"
-#             echo "devices=$DEVICE_LIST" >> $GITHUB_OUTPUT
-#           fi
+            echo "Found online devices: $DEVICE_LIST"
+            echo "devices=$DEVICE_LIST" >> $GITHUB_OUTPUT
+          fi
 
 #   # --- Job 3: CD-Pipeline (保持不變，名稱可微調) ---
 #   CD-Pipeline:
