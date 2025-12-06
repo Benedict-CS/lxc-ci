@@ -46,7 +46,7 @@ jobs:
   Get-Target-Devices:
     name: 2. Get Target Devices
     runs-on: ubuntu-latest
-    needs: [CI-Pipeline]
+    # needs: [CI-Pipeline]
     outputs:
       devices: ${{ steps.determine-devices.outputs.devices }}
     steps:
