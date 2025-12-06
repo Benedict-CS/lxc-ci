@@ -1,4 +1,4 @@
-FROM debian:12-slim
+FROM ymirwang/prplos:v2.33
                   
 CMD ["/bin/sh"]
 
