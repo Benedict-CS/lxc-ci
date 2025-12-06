@@ -1,4 +1,4 @@
-FROM alpine:3.19
+FROM debian:12-slim
         
 CMD ["/bin/sh"]
     
