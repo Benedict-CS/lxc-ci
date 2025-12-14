@@ -50,7 +50,7 @@ jobs:
     outputs:
       devices: ${{ steps.determine-devices.outputs.devices }}
     steps:
-      # 【重要】必須先 checkout 才能讀取 targets.txt
+      # 【重要】必須先 checkout 才能讀取 targets.yml
       - uses: actions/checkout@v4
 
       - name: Get Auth Token
@@ -69,9 +69,9 @@ jobs:
           UI_INPUT="${{ github.event.inputs.target_devices }}"
           FILE_INPUT=""
           
-          # 嘗試讀取 targets.txt (如果檔案存在)
-          if [ -f "targets.txt" ]; then
-            FILE_INPUT=$(cat targets.txt | tr -d '\n' | tr -d ' ') # 去除換行和空白
+          # 嘗試讀取 targets.yml (如果檔案存在)
+          if [ -f "targets.yml" ]; then
+            FILE_INPUT=$(cat targets.yml | tr -d '\n' | tr -d ' ') # 去除換行和空白
           fi
 
           echo "UI Input: $UI_INPUT"
@@ -84,7 +84,7 @@ jobs:
             echo "Using Web UI input."
             FINAL_TARGETS="$UI_INPUT"
           elif [ -n "$FILE_INPUT" ]; then
-            echo "Using targets.txt config."
+            echo "Using targets.yml config."
             FINAL_TARGETS="$FILE_INPUT"
           fi
 
