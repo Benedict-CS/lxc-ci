@@ -141,22 +141,36 @@ jobs:
           echo "::add-mask::$TEMP_TOKEN"
           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
 
+      # --- 2. 紀錄開始打 API 給 Controller 的時間 ---
       - name: Install New Version (Green) on ${{ matrix.device }}
         id: install_green
         run: |
-          # ... (前面的設定變數保持不變) ...
+          # 紀錄開始時間
+          START_TIME=$(date +%s%3N)
+          echo "Step 2: Start CURL Request at $(date '+%H:%M:%S.%3N')"
 
-          echo "Step 2: Sending Deployment Request (Fire and Forget)..."
+          IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
           
-          # 【修改重點】加入 --max-time 2 和 || true
-          # 意思：只等 2 秒，如果 server 還沒回傳就直接斷開，並且視為成功 (true)
+          # 執行 CURL
+          # curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/add' \
+          #   --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
+          #   --silent \
+          #   --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}"
+          
           curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/add' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
             --silent --max-time 2 \
             --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}" || true
+
+          # 紀錄結束時間
+          END_TIME=$(date +%s%3N)
+          echo "Step 3: End CURL Request at $(date '+%H:%M:%S.%3N')"
           
-          echo "Step 3: Request sent. Ignoring response."
-          #     sleep 10 
+          # 計算 CURL 耗時
+          DURATION=$((END_TIME - START_TIME))
+          echo "CURL_DURATION=${DURATION}ms" >> $GITHUB_STEP_SUMMARY
+          echo "::notice title=Performance::Device ${{ matrix.device }}: Curl took ${DURATION}ms"
+          #     sleep 10
 
       # - name: Find Green IPs on ${{ matrix.device }}
       #   id: find_green_ip
