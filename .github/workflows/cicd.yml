@@ -114,9 +114,10 @@ jobs:
           fi
 
   # --- Job 3: CD-Pipeline (保持不變，名稱可微調) ---
+# --- Job 3: CD-Pipeline ---
   CD-Pipeline:
     name: 3. CD-Pipeline (Deploy to ${{ matrix.device }})
-    needs: [CI-Pipeline, Get-Target-Devices] # 依賴改名後的 Job
+    needs: [CI-Pipeline, Get-Target-Devices]
     if: needs.Get-Target-Devices.outputs.devices != '[]'
     runs-on: ubuntu-latest
     strategy:
@@ -125,6 +126,12 @@ jobs:
       fail-fast: false 
 
     steps:
+      # --- 1. 紀錄 VM 啟動後拿到控制權的時間 ---
+      - name: Debug - Log VM Start Time
+        run: |
+          echo "VM_READY_TIME=$(date +%s%3N)" >> $GITHUB_ENV
+          echo "Step 1: Runner VM is ready at $(date '+%H:%M:%S.%3N')"
+
       - name: Get Auth Token
         id: auth
         run: |
@@ -134,15 +141,31 @@ jobs:
           echo "::add-mask::$TEMP_TOKEN"
           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
 
+      # --- 2. 紀錄開始打 API 給 Controller 的時間 ---
       - name: Install New Version (Green) on ${{ matrix.device }}
         id: install_green
         run: |
+          # 紀錄開始時間
+          START_TIME=$(date +%s%3N)
+          echo "Step 2: Start CURL Request at $(date '+%H:%M:%S.%3N')"
+
           IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
+          
+          # 執行 CURL
           curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/add' \
             --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
             --silent --connect-timeout 10 --max-time 60 \
             --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}"
-      #     sleep 10
+          
+          # 紀錄結束時間
+          END_TIME=$(date +%s%3N)
+          echo "Step 3: End CURL Request at $(date '+%H:%M:%S.%3N')"
+          
+          # 計算 CURL 耗時
+          DURATION=$((END_TIME - START_TIME))
+          echo "CURL_DURATION=${DURATION}ms" >> $GITHUB_STEP_SUMMARY
+          echo "::notice title=Performance::Device ${{ matrix.device }}: Curl took ${DURATION}ms"
+          #     sleep 10
 
       # - name: Find Green IPs on ${{ matrix.device }}
       #   id: find_green_ip
