@@ -44,7 +44,7 @@ jobs:
 
 # --- Job 2: 獲取設備列表 (支援 UI 輸入 + 檔案設定) ---
   Get-Target-Devices:
-    name: 2. Get Target Devices
+    name: 2. Get Devices
     runs-on: ubuntu-latest
     # needs: [CI-Pipeline]
     outputs:
@@ -116,7 +116,7 @@ jobs:
   # --- Job 3: CD-Pipeline (保持不變，名稱可微調) ---
 # --- Job 3: CD-Pipeline ---
   CD-Pipeline:
-    name: 3. CD-Pipeline (Deploy to ${{ matrix.device }})
+    name: 3. Deploy to ${{ matrix.device }}
     needs: [CI-Pipeline, Get-Target-Devices]
     if: needs.Get-Target-Devices.outputs.devices != '[]'
     runs-on: ubuntu-latest
