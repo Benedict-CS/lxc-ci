@@ -64,7 +64,7 @@ jobs:
 
       - name: Determine Target Devices
         id: determine-devices
-        run: |
+        run: | 
           # --- 1. 定義變數 ---
           UI_INPUT="${{ github.event.inputs.target_devices }}"
           FILE_INPUT=""
