@@ -110,4 +110,4 @@ jobs:
                 }
             }" || true
 
-          echo "✅ Canary Split Updated. VIP 192.168.3.1 should now point to new containers."  
+          echo "✅ Canary Split Updated. VIP 192.168.3.1 should now point to new containers."   
