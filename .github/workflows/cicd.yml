@@ -66,7 +66,7 @@ jobs:
           curl --location --request PUT "https://${{ env.API_HOST }}/api/device/${{ env.CONTROLLER_DEVICE_ID }}/stomp/operate" \
             --header 'Content-Type: application/json' \
             --header "Authorization: ${TOKEN}" \
-            --fail --silent --show-error \
+            --silent --show-error \
             --data-raw "{
                 \"command\": \"Device.LCM.LXC.1.Install()\", 
                 \"input_args\": {
