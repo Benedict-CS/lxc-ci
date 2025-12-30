@@ -10,10 +10,10 @@ env:
   REGISTRY_DOMAIN: registry.benedicttiong.site
   IMAGE_NAME: test-service
   API_HOST: controller.benedicttiong.site
-  CONTROLLER_DEVICE_ID: "Root-AP"  # 這裡寫死你的 Root AP ID
+  CONTROLLER_DEVICE_ID: "Root-AP"
 
 jobs:
-  # --- Job 1: CI-Pipeline (編譯 Docker Image) ---
+  # --- Job 1: Build & Push ---
   CI-Pipeline:
     name: 1. Build & Push
     runs-on: ubuntu-latest
@@ -38,7 +38,7 @@ jobs:
           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
           provenance: false
 
-  # --- Job 2: CD-Pipeline (通知 Root AP 進行全網部署) ---
+  # --- Job 2: Trigger Deployment ---
   CD-Pipeline:
     name: 2. Trigger Deployment
     needs: [CI-Pipeline]
@@ -53,11 +53,12 @@ jobs:
           echo "::add-mask::$TEMP_TOKEN"
           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
 
-      - name: Trigger Root-AP Controller
+      # 步驟 1: 發送安裝指令
+      - name: 1. Trigger Install (Root + Extenders)
         id: deploy
         run: |
           FULL_IMAGE_URL="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
-          echo "Deploying Image: $FULL_IMAGE_URL to Device: Root-AP"
+          echo "Deploying Image: $FULL_IMAGE_URL"
 
           curl --location --request PUT "https://${{ env.API_HOST }}/api/device/Root-AP/stomp/operate" \
             --header 'Content-Type: application/json' \
@@ -70,15 +71,31 @@ jobs:
                 }
             }" || true
           
-          echo "✅ Deployment command sent. Waiting for containers to initialize..."
-          
-          # 2. 等待容器啟動 (給它 30 秒)
-          sleep 10
+          echo "✅ Deployment command sent. Waiting 40s for containers to initialize..."
+          sleep 40  # 給容器足夠的時間啟動
 
-      - name: Apply Canary Split (Update VIP)
+      # 步驟 2: 掃描新容器 IP (產生列表)
+      - name: 2. Refresh IP List (Find IPs)
         run: |
-          # 3. 觸發分流規則更新 (這步會讓 VIP 生效)
-          # 這裡設定 新版 100% 流量 (或者你可以設 50/50)
+          VERSION_TAG="${{ needs.CI-Pipeline.outputs.VERSION }}"
+          echo "Scanning for containers with version: $VERSION_TAG"
+          
+          # 呼叫 Agent 去掃描 ubus 並產生 /tmp/ben/new_ips.txt
+          curl --location --request PUT "https://${{ env.API_HOST }}/api/device/Root-AP/stomp/operate" \
+            --header 'Content-Type: application/json' \
+            --header "Authorization: ${TOKEN}" \
+            --silent --show-error \
+            --data-raw "{
+                \"command\": \"Device.DeploymentManager.FindIPsByVersion()\", 
+                \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }
+            }" || true
+            
+          echo "✅ IP Scan triggered. Waiting 5s for file generation..."
+          sleep 5
+
+      # 步驟 3: 設定分流規則 (讀取列表並生效)
+      - name: 3. Apply Canary Split (Update VIP)
+        run: |
           echo "Updating IPTables for VIP..."
           
           curl --location --request PUT "https://${{ env.API_HOST }}/api/device/Root-AP/stomp/operate" \
