@@ -72,7 +72,7 @@ jobs:
             }" || true
           
           echo "✅ Deployment command sent. Waiting 40s for containers to initialize..."
-          sleep 40  # 給容器足夠的時間啟動
+          sleep 10  # 給容器足夠的時間啟動 
 
       # 步驟 2: 掃描新容器 IP (產生列表)
       - name: 2. Refresh IP List (Find IPs)
