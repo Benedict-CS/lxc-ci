@@ -56,14 +56,10 @@ jobs:
       - name: Trigger Root-AP Controller
         id: deploy
         run: |
-          # 1. 組裝 Image URL
           FULL_IMAGE_URL="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
-          
-          echo "Deploying Image: $FULL_IMAGE_URL to Device: ${{ env.CONTROLLER_DEVICE_ID }}"
+          echo "Deploying Image: $FULL_IMAGE_URL to Device: Root-AP"
 
-          # 2. 發送 USP Operate 指令 (Device.LCM.LXC.1.Install)
-          # 注意：這裡使用 "operate" API，因為你的 C Code 是註冊 Install() 操作
-          curl --location --request PUT "https://${{ env.API_HOST }}/api/device/${{ env.CONTROLLER_DEVICE_ID }}/stomp/operate" \
+          curl --location --request PUT "https://${{ env.API_HOST }}/api/device/Root-AP/stomp/operate" \
             --header 'Content-Type: application/json' \
             --header "Authorization: ${TOKEN}" \
             --silent --show-error \
@@ -72,9 +68,29 @@ jobs:
                 \"input_args\": {
                     \"ImageURL\": \"$FULL_IMAGE_URL\"
                 }
-            }"
-            
-      - name: Deployment Triggered
+            }" || true
+          
+          echo "✅ Deployment command sent. Waiting for containers to initialize..."
+          
+          # 2. 等待容器啟動 (給它 30 秒)
+          sleep 10
+
+      - name: Apply Canary Split (Update VIP)
         run: |
-          echo "✅ Deployment command sent to Root-AP."
-          echo "The Controller will now broadcast to all Extenders."
+          # 3. 觸發分流規則更新 (這步會讓 VIP 生效)
+          # 這裡設定 新版 100% 流量 (或者你可以設 50/50)
+          echo "Updating IPTables for VIP..."
+          
+          curl --location --request PUT "https://${{ env.API_HOST }}/api/device/Root-AP/stomp/operate" \
+            --header 'Content-Type: application/json' \
+            --header "Authorization: ${TOKEN}" \
+            --silent --show-error \
+            --data-raw "{
+                \"command\": \"Device.DeploymentManager.SetCanarySplit()\", 
+                \"input_args\": {
+                    \"old_weight\": \"0\",
+                    \"new_weight\": \"100\"
+                }
+            }" || true
+
+          echo "✅ Canary Split Updated. VIP 192.168.3.1 should now point to new containers."
