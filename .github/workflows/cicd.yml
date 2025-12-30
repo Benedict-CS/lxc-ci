@@ -54,25 +54,31 @@ jobs:
           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
 
       # 步驟 1: 發送安裝指令
+# 步驟 1: 發送安裝指令 (使用 AddObject 確保實例被建立)
       - name: 1. Trigger Install (Root + Extenders)
         id: deploy
         run: |
           FULL_IMAGE_URL="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
           echo "Deploying Image: $FULL_IMAGE_URL"
 
-          curl --location --request PUT "https://${{ env.API_HOST }}/api/device/Root-AP/stomp/operate" \
+          # 使用 stomp/add，這樣就算 DB 是空的也能自動建立並觸發安裝
+          curl --location --request PUT "https://${{ env.API_HOST }}/api/device/Root-AP/stomp/add" \
             --header 'Content-Type: application/json' \
             --header "Authorization: ${TOKEN}" \
             --silent --show-error \
             --data-raw "{
-                \"command\": \"Device.LCM.LXC.1.Install()\", 
-                \"input_args\": {
-                    \"ImageURL\": \"$FULL_IMAGE_URL\"
-                }
+                \"allow_partial\": true, 
+                \"create_objs\": [{
+                    \"obj_path\": \"Device.LCM.LXC.\", 
+                    \"param_settings\": [{
+                        \"param\": \"ImageURL\", 
+                        \"value\": \"$FULL_IMAGE_URL\"
+                    }]
+                }]
             }" || true
           
-          echo "✅ Deployment command sent. Waiting 40s for containers to initialize..."
-          sleep 10  # 給容器足夠的時間啟動 
+          echo "✅ AddObject sent. This triggers the installation. Waiting 40s..."
+          sleep 10
 
       # 步驟 2: 掃描新容器 IP (產生列表)
       - name: 2. Refresh IP List (Find IPs)
