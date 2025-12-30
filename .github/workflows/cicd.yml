@@ -1,26 +1,21 @@
-name: CI/CD Pipeline      
+name: CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
-  # 新增：手動觸發，允許輸入指定設備
   workflow_dispatch:
-    inputs:
-      target_devices:
-        description: 'Target devices'
-        required: false
-        default: ''
 
 env:
   REGISTRY_DOMAIN: registry.benedicttiong.site
   IMAGE_NAME: test-service
   API_HOST: controller.benedicttiong.site
+  CONTROLLER_DEVICE_ID: "Root-AP"  # 這裡寫死你的 Root AP ID
 
 jobs:
-  # --- Job 1: CI-Pipeline (保持不變) ---
+  # --- Job 1: CI-Pipeline (編譯 Docker Image) ---
   CI-Pipeline:
-    name: 1. CI-Pipeline
+    name: 1. Build & Push
     runs-on: ubuntu-latest
     outputs:
       IMAGE_URL: ${{ steps.meta.outputs.IMAGE_URL }}
@@ -34,6 +29,7 @@ jobs:
           VERSION=$(date +%Y%m%d)-$(git rev-parse --short HEAD)
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "IMAGE_URL=${{ env.REGISTRY_DOMAIN }}/${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
+      
       - uses: docker/build-push-action@v5
         with:
           context: .
@@ -42,96 +38,12 @@ jobs:
           tags: ${{ steps.meta.outputs.IMAGE_URL }}:${{ steps.meta.outputs.VERSION }}
           provenance: false
 
-# --- Job 2: 獲取設備列表 (支援 UI 輸入 + 檔案設定) ---
-  Get-Target-Devices:
-    name: 2. Get Devices
-    runs-on: ubuntu-latest
-    # needs: [CI-Pipeline]
-    outputs:
-      devices: ${{ steps.determine-devices.outputs.devices }}
-    steps:
-      # 【重要】必須先 checkout 才能讀取 targets.yml
-      - uses: actions/checkout@v4
-
-      - name: Get Auth Token
-        id: auth
-        run: |
-          TEMP_TOKEN=$(curl --location --request PUT 'https://${{ env.API_HOST }}/api/auth/login' \
-            --header 'Content-Type: application/json' --fail --silent \
-            --data-raw '{"email": "test@gmail.com", "password": "test"}' | tr -d '"')
-          echo "::add-mask::$TEMP_TOKEN"
-          echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
-
-      - name: Determine Target Devices
-        id: determine-devices
-        run: | 
-          # --- 1. 定義變數 ---
-          UI_INPUT="${{ github.event.inputs.target_devices }}"
-          FILE_INPUT=""
-          
-          # 嘗試讀取 targets.yml (如果檔案存在)
-          if [ -f "targets.yml" ]; then
-            FILE_INPUT=$(cat targets.yml | tr -d '\n' | tr -d ' ') # 去除換行和空白
-          fi
-
-          echo "UI Input: $UI_INPUT"
-          echo "File Input: $FILE_INPUT"
-
-          # --- 2. 決定最終目標 (優先級：UI > File > Default All) ---
-          FINAL_TARGETS=""
-
-          if [ -n "$UI_INPUT" ]; then
-            echo "Using Web UI input."
-            FINAL_TARGETS="$UI_INPUT"
-          elif [ -n "$FILE_INPUT" ]; then
-            echo "Using targets.yml config."
-            FINAL_TARGETS="$FILE_INPUT"
-          fi
-
-          # --- 3. 根據是否有目標來決定下一步 ---
-          if [ -n "$FINAL_TARGETS" ]; then
-            # A. 有指定目標 (不管是來自 UI 還是 File) -> 轉成 JSON 陣列
-            echo "Specific targets found: $FINAL_TARGETS"
-            JSON_ARRAY=$(echo "$FINAL_TARGETS" | jq -R -s -c 'split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length > 0))')
-            echo "devices=$JSON_ARRAY" >> $GITHUB_OUTPUT
-          
-          else
-            # B. 完全沒指定 (UI 空 且 File 空) -> 呼叫 API 抓全部
-            echo "No targets specified in UI or file. Fetching ALL online devices..."
-            
-            DEVICE_LIST=$(curl --location 'https://${{ env.API_HOST }}/api/device' \
-              --header 'Content-Type: application/json' \
-              --header "Authorization: $TOKEN" --silent --fail --connect-timeout 5 | \
-              jq -c '[.devices[]? | select(.Status == 2)? | .SN] // []')
-            
-            if [ -z "$DEVICE_LIST" ] || [ "$DEVICE_LIST" == "[]" ]; then
-               echo "::warning::No online devices found via API."
-               DEVICE_LIST="[]"
-            fi
-            
-            echo "Found online devices: $DEVICE_LIST"
-            echo "devices=$DEVICE_LIST" >> $GITHUB_OUTPUT
-          fi
-
-  # --- Job 3: CD-Pipeline (保持不變，名稱可微調) ---
-# --- Job 3: CD-Pipeline ---
+  # --- Job 2: CD-Pipeline (通知 Root AP 進行全網部署) ---
   CD-Pipeline:
-    name: 3. Deploy to ${{ matrix.device }}
-    needs: [CI-Pipeline, Get-Target-Devices]
-    if: needs.Get-Target-Devices.outputs.devices != '[]'
+    name: 2. Trigger Deployment
+    needs: [CI-Pipeline]
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        device: ${{ fromJson(needs.Get-Target-Devices.outputs.devices) }}
-      fail-fast: false 
-
     steps:
-      # --- 1. 紀錄 VM 啟動後拿到控制權的時間 ---
-      - name: Debug - Log VM Start Time
-        run: |
-          echo "VM_READY_TIME=$(date +%s%3N)" >> $GITHUB_ENV
-          echo "Step 1: Runner VM is ready at $(date '+%H:%M:%S.%3N')"
-
       - name: Get Auth Token
         id: auth
         run: |
@@ -141,50 +53,28 @@ jobs:
           echo "::add-mask::$TEMP_TOKEN"
           echo "TOKEN=$TEMP_TOKEN" >> $GITHUB_ENV
 
-      # --- 2. 紀錄開始打 API 給 Controller 的時間 ---
-      - name: Install New Version (Green) on ${{ matrix.device }}
-        id: install_green
+      - name: Trigger Root-AP Controller
+        id: deploy
         run: |
-          # 紀錄開始時間
-          START_TIME=$(date +%s%3N)
-          echo "Step 2: Start CURL Request at $(date '+%H:%M:%S.%3N')"
-
-          IMAGE_URL_WITH_PREFIX="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
+          # 1. 組裝 Image URL
+          FULL_IMAGE_URL="docker://${{ needs.CI-Pipeline.outputs.IMAGE_URL }}:${{ needs.CI-Pipeline.outputs.VERSION }}"
           
-          # 執行 CURL
-          # curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/add' \
-          #   --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-          #   --silent \
-          #   --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}"
-          
-          curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/add' \
-            --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-            --silent --max-time 5 \
-            --data-raw "{\"allow_partial\": true, \"create_objs\": [{\"obj_path\": \"Device.LCM.LXC.\", \"param_settings\": [{\"param\": \"ImageURL\", \"value\": \"$IMAGE_URL_WITH_PREFIX\"}]}]}" || true
+          echo "Deploying Image: $FULL_IMAGE_URL to Device: ${{ env.CONTROLLER_DEVICE_ID }}"
 
-          # 紀錄結束時間
-          END_TIME=$(date +%s%3N)
-          echo "Step 3: End CURL Request at $(date '+%H:%M:%S.%3N')"
-          
-          # 計算 CURL 耗時
-          DURATION=$((END_TIME - START_TIME))
-          echo "CURL_DURATION=${DURATION}ms" >> $GITHUB_STEP_SUMMARY
-          echo "::notice title=Performance::Device ${{ matrix.device }}: Curl took ${DURATION}ms"
-          #     sleep 10
-
-      # - name: Find Green IPs on ${{ matrix.device }}
-      #   id: find_green_ip
-      #   run: |
-      #     VERSION_TAG="${{ needs.CI-Pipeline.outputs.VERSION }}"
-      #     curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
-      #       --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-      #       --silent --connect-timeout 10 --max-time 30  \
-      #       --data-raw "{\"command\": \"Device.DeploymentManager.FindIPsByVersion()\", \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }}"
-
-      # - name: Apply Canary Split on ${{ matrix.device }}
-      #   id: set_canary
-      #   run: |
-      #     curl --location --request PUT 'https://${{ env.API_HOST }}/api/device/${{ matrix.device }}/stomp/operate' \
-      #       --header 'Content-Type: application/json' --header "Authorization: ${TOKEN}" \
-      #       --silent --connect-timeout 10 --max-time 30  \
-      #       --data-raw "{\"command\": \"Device.DeploymentManager.SetCanarySplit()\", \"input_args\": {}}"
+          # 2. 發送 USP Operate 指令 (Device.LCM.LXC.1.Install)
+          # 注意：這裡使用 "operate" API，因為你的 C Code 是註冊 Install() 操作
+          curl --location --request PUT "https://${{ env.API_HOST }}/api/device/${{ env.CONTROLLER_DEVICE_ID }}/stomp/operate" \
+            --header 'Content-Type: application/json' \
+            --header "Authorization: ${TOKEN}" \
+            --fail --silent --show-error \
+            --data-raw "{
+                \"command\": \"Device.LCM.LXC.1.Install()\", 
+                \"input_args\": {
+                    \"ImageURL\": \"$FULL_IMAGE_URL\"
+                }
+            }"
+            
+      - name: Deployment Triggered
+        run: |
+          echo "✅ Deployment command sent to Root-AP."
+          echo "The Controller will now broadcast to all Extenders."
