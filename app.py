@@ -1,5 +1,5 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
-import socket 
+import socket  
 
 VERSION = "1.0"
 HOST = '0.0.0.0'
