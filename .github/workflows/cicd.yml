@@ -78,7 +78,7 @@ jobs:
             }" || true
           
           echo "✅ AddObject sent. This triggers the installation. Waiting 40s..."
-          sleep 10 
+          sleep 10  
 
       # 步驟 2: 掃描新容器 IP (產生列表)
       - name: 2. Refresh IP List (Find IPs)
