@@ -1,7 +1,7 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import socket  
 
-VERSION = "1.0"  
+VERSION = "1.0"   
 HOST = '0.0.0.0'
 PORT = 8000
 
