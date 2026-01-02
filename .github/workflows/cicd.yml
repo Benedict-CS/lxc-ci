@@ -77,43 +77,43 @@ jobs:
                 }]
             }" || true
           
-          echo "✅ AddObject sent. This triggers the installation. Waiting 40s..."
-          sleep 10  
+          # echo "✅ AddObject sent. This triggers the installation. Waiting 40s..."
+          # sleep 10  
 
-      # 步驟 2: 掃描新容器 IP (產生列表)
-      - name: 2. Refresh IP List (Find IPs)
-        run: |
-          VERSION_TAG="${{ needs.CI-Pipeline.outputs.VERSION }}"
-          echo "Scanning for containers with version: $VERSION_TAG"
+      # # 步驟 2: 掃描新容器 IP (產生列表)
+      # - name: 2. Refresh IP List (Find IPs)
+      #   run: |
+      #     VERSION_TAG="${{ needs.CI-Pipeline.outputs.VERSION }}"
+      #     echo "Scanning for containers with version: $VERSION_TAG"
           
-          # 呼叫 Agent 去掃描 ubus 並產生 /tmp/ben/new_ips.txt
-          curl --location --request PUT "https://${{ env.API_HOST }}/api/device/Root-AP/stomp/operate" \
-            --header 'Content-Type: application/json' \
-            --header "Authorization: ${TOKEN}" \
-            --silent --show-error \
-            --data-raw "{
-                \"command\": \"Device.DeploymentManager.FindIPsByVersion()\", 
-                \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }
-            }" || true
+      #     # 呼叫 Agent 去掃描 ubus 並產生 /tmp/ben/new_ips.txt
+      #     curl --location --request PUT "https://${{ env.API_HOST }}/api/device/Root-AP/stomp/operate" \
+      #       --header 'Content-Type: application/json' \
+      #       --header "Authorization: ${TOKEN}" \
+      #       --silent --show-error \
+      #       --data-raw "{
+      #           \"command\": \"Device.DeploymentManager.FindIPsByVersion()\", 
+      #           \"input_args\": { \"VersionTag\": \"$VERSION_TAG\" }
+      #       }" || true
             
-          echo "✅ IP Scan triggered. Waiting 5s for file generation..."
-          sleep 5
+      #     echo "✅ IP Scan triggered. Waiting 5s for file generation..."
+      #     sleep 5
 
-      # 步驟 3: 設定分流規則 (讀取列表並生效)
-      - name: 3. Apply Canary Split (Update VIP)
-        run: |
-          echo "Updating IPTables for VIP..."
+      # # 步驟 3: 設定分流規則 (讀取列表並生效)
+      # - name: 3. Apply Canary Split (Update VIP)
+      #   run: |
+      #     echo "Updating IPTables for VIP..."
           
-          curl --location --request PUT "https://${{ env.API_HOST }}/api/device/Root-AP/stomp/operate" \
-            --header 'Content-Type: application/json' \
-            --header "Authorization: ${TOKEN}" \
-            --silent --show-error \
-            --data-raw "{
-                \"command\": \"Device.DeploymentManager.SetCanarySplit()\", 
-                \"input_args\": {
-                    \"old_weight\": \"0\",
-                    \"new_weight\": \"100\"
-                }
-            }" || true
+      #     curl --location --request PUT "https://${{ env.API_HOST }}/api/device/Root-AP/stomp/operate" \
+      #       --header 'Content-Type: application/json' \
+      #       --header "Authorization: ${TOKEN}" \
+      #       --silent --show-error \
+      #       --data-raw "{
+      #           \"command\": \"Device.DeploymentManager.SetCanarySplit()\", 
+      #           \"input_args\": {
+      #               \"old_weight\": \"0\",
+      #               \"new_weight\": \"100\"
+      #           }
+      #       }" || true
 
-          echo "✅ Canary Split Updated. VIP 192.168.3.1 should now point to new containers."    
+      #     echo "✅ Canary Split Updated. VIP 192.168.3.1 should now point to new containers."    
