@@ -1,6 +1,6 @@
 FROM alpine:3.19  
                 
-CMD ["/bin/sh"]    
+CMD ["/bin/sh"]     
     
 # alpine:3.19 20251130-b8316b5 ci 18s cd 46
 # ubuntu:25.04 20251130-43309ea ci 22s cd 46
